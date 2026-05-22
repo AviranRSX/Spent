@@ -6,15 +6,19 @@ import type { SyncRun } from "@/lib/types";
 export function createSyncRun(
   workspaceId: number,
   provider: string,
-  credentialId: number,
-  scrapeFromDate: string
+  credentialId: number | null,
+  scrapeFromDate: string,
+  importSourceId: number | null = null
 ): number {
   const result = getDb()
     .prepare(
-      `INSERT INTO sync_runs (workspace_id, provider, credential_id, started_at, status, scrape_from_date)
-       VALUES (?, ?, ?, datetime('now'), 'running', ?)`
+      `INSERT INTO sync_runs (
+         workspace_id, provider, credential_id, import_source_id,
+         started_at, status, scrape_from_date
+       )
+       VALUES (?, ?, ?, ?, datetime('now'), 'running', ?)`
     )
-    .run(workspaceId, provider, credentialId, scrapeFromDate);
+    .run(workspaceId, provider, credentialId, importSourceId, scrapeFromDate);
   return Number(result.lastInsertRowid);
 }
 

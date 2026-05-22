@@ -15,25 +15,13 @@ import {
 } from "@/server/db/queries/sync-runs";
 import {
   insertTransactions,
-  getUncategorizedIdsByKind,
-  getTransactionsForCategorization,
-  batchUpdateCategories,
-  batchSetNeedsReview,
 } from "@/server/db/queries/transactions";
-import {
-  lookupMerchantCategoriesBulk,
-  normalizeMerchant,
-  incrementMerchantHits,
-} from "@/server/lib/merchant-memory";
-import { getAllCategories } from "@/server/db/queries/categories";
-import { getRecentCorrections } from "@/server/db/queries/category-corrections";
 import { scrapeBank } from "@/server/scrapers";
 import {
   scrapeOneZeroFirstTime,
   scrapeOneZeroWithToken,
 } from "@/server/scrapers/one-zero";
-import { createAIProvider } from "@/server/ai/factory";
-import { ensureOllamaRunning } from "@/server/ai/ollama-manager";
+import { categorizeWorkspaceTransactions } from "@/server/sync/categorization";
 import { toLocalISODate } from "@/server/lib/date-utils";
 import { listAllWorkspaceIds } from "@/server/lib/workspace-context";
 import { getWorkspace } from "@/server/db/queries/workspaces";
@@ -73,20 +61,6 @@ export interface WorkspaceSummary {
   updated: number;
   categorized: number;
   aiWarning: string | null;
-}
-
-export function friendlyAIError(err: unknown, modelName: string): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (/model.*not found|pull.*model|404/i.test(msg)) {
-    return `Ollama model "${modelName}" is not installed. Run: ollama pull ${modelName}`;
-  }
-  if (/ECONNREFUSED|fetch failed/i.test(msg)) {
-    return "Ollama is not reachable. Make sure it's installed and that no firewall is blocking port 11434.";
-  }
-  if (/Anthropic|api[_-]?key|401|403/i.test(msg)) {
-    return "Claude API request was rejected. Check your API key in settings.";
-  }
-  return `AI categorization failed: ${msg}`;
 }
 
 function supportsProgrammaticTwoFactor(provider: BankProvider): boolean {
@@ -411,141 +385,11 @@ export async function syncWorkspace(
   const totalAdded = results.reduce((s, r) => s + r.added, 0);
   const totalUpdated = results.reduce((s, r) => s + r.updated, 0);
 
-  let categorized = 0;
-  let aiWarning: string | null = null;
-
-  const aiProvider = createAIProvider();
-  if (!aiProvider) {
-    aiWarning =
-      "AI provider not connected — new transactions weren't auto-categorized.";
-  }
-  if (aiProvider) {
-    if (settings.aiProvider === "ollama") {
-      send("stage", {
-        workspaceId,
-        workspaceName,
-        stage: "ollama-start",
-      });
-      const ollamaResult = await ensureOllamaRunning(settings.ollamaUrl);
-      if (!ollamaResult.ok) {
-        aiWarning = ollamaResult.error ?? "Ollama is not reachable";
-        console.error("[sync]", aiWarning);
-      }
-    }
-
-    if (!aiWarning) {
-      send("stage", {
-        workspaceId,
-        workspaceName,
-        stage: "categorizing",
-      });
-
-      const KINDS: Array<"expense" | "income"> = ["expense", "income"];
-      const BATCH_SIZE = 50;
-
-      for (const kind of KINDS) {
-        const uncategorizedIds = getUncategorizedIdsByKind(workspaceId, kind);
-        if (uncategorizedIds.length === 0) continue;
-
-        const categories = getAllCategories(workspaceId, kind);
-        if (categories.length === 0) continue;
-        const categoryInput = categories.map((c) => ({
-          name: c.name,
-          description: c.description,
-        }));
-        const pastCorrections = getRecentCorrections(workspaceId, kind);
-
-        const allTxns = getTransactionsForCategorization(
-          workspaceId,
-          uncategorizedIds
-        );
-
-        const memoryMap = lookupMerchantCategoriesBulk(
-          workspaceId,
-          allTxns.map((t) => t.description)
-        );
-
-        const memoryUpdates: { id: number; categoryId: number }[] = [];
-        const memoryKeysHit: string[] = [];
-        const remainingTxns: typeof allTxns = [];
-        for (const t of allTxns) {
-          const m = memoryMap.get(t.description);
-          if (m && m.kind === kind) {
-            memoryUpdates.push({ id: t.id, categoryId: m.categoryId });
-            memoryKeysHit.push(normalizeMerchant(t.description));
-          } else {
-            remainingTxns.push(t);
-          }
-        }
-        if (memoryUpdates.length > 0) {
-          batchUpdateCategories(workspaceId, memoryUpdates);
-          incrementMerchantHits(workspaceId, memoryKeysHit);
-          categorized += memoryUpdates.length;
-          send("stage", {
-            workspaceId,
-            workspaceName,
-            stage: "memory-hit",
-            count: memoryUpdates.length,
-            kind,
-          });
-        }
-
-        for (let i = 0; i < remainingTxns.length; i += BATCH_SIZE) {
-          const batch = remainingTxns.slice(i, i + BATCH_SIZE);
-
-          try {
-            const mappings = await aiProvider.categorize(
-              batch.map((t) => ({
-                description: t.description,
-                amount: t.chargedAmount,
-                currency: t.originalCurrency,
-                memo: t.memo,
-              })),
-              categoryInput,
-              { pastCorrections }
-            );
-
-            const updates: {
-              id: number;
-              categoryId: number;
-              aiConfidence: number | null;
-            }[] = [];
-            const reviewFlags: { id: number; needsReview: boolean }[] = [];
-
-            for (const m of mappings) {
-              const category = categories.find(
-                (c) => c.name === m.categoryName
-              );
-              const txn = batch[m.index];
-              if (!category || !txn) continue;
-              const confidence = m.confidence ?? null;
-              updates.push({
-                id: txn.id,
-                categoryId: category.id,
-                aiConfidence: confidence,
-              });
-              reviewFlags.push({
-                id: txn.id,
-                needsReview: confidence == null || confidence <= 4,
-              });
-            }
-
-            batchUpdateCategories(workspaceId, updates);
-            batchSetNeedsReview(workspaceId, reviewFlags);
-            categorized += updates.length;
-          } catch (err) {
-            console.error(
-              `[sync] AI categorization batch failed (${kind}):`,
-              err
-            );
-            if (!aiWarning) {
-              aiWarning = friendlyAIError(err, settings.ollamaModel);
-            }
-          }
-        }
-      }
-    }
-  }
+  const { categorized, aiWarning } = await categorizeWorkspaceTransactions(
+    workspaceId,
+    workspaceName,
+    send
+  );
 
   return {
     workspaceId,

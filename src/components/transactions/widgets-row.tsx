@@ -1,22 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { ArrowDownRight, ArrowUpRight, HelpCircle } from "lucide-react";
-import { toast } from "sonner";
-import { previewCategorize } from "@/lib/api";
-import type { CategorizePreview, TransactionsSummary } from "@/lib/api";
+import type { TransactionsSummary } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
-import { CategorizeReviewDialog } from "@/components/dashboard/categorize-review-dialog";
 import type { Locale } from "@/i18n/routing";
 
 interface WidgetsRowProps {
   summary?: TransactionsSummary;
   loading: boolean;
+  onReviewNow: () => void;
 }
 
-export function WidgetsRow({ summary, loading }: WidgetsRowProps) {
+export function WidgetsRow({ summary, loading, onReviewNow }: WidgetsRowProps) {
   const topMerchants = summary?.topMerchants ?? [];
   const largestIncome = summary?.income.largest ?? null;
   const largestExpense = summary?.expense.largest ?? null;
@@ -28,7 +24,11 @@ export function WidgetsRow({ summary, loading }: WidgetsRowProps) {
         <TopMerchants merchants={topMerchants} loading={loading} />
       </div>
       <div className="flex flex-col gap-4">
-        <PendingReview count={pendingReviewCount} loading={loading} />
+        <PendingReview
+          count={pendingReviewCount}
+          loading={loading}
+          onReviewNow={onReviewNow}
+        />
         <Outliers
           largestIncome={largestIncome}
           largestExpense={largestExpense}
@@ -90,29 +90,11 @@ function TopMerchants({ merchants, loading }: TopMerchantsProps) {
 interface PendingReviewProps {
   count: number;
   loading: boolean;
+  onReviewNow: () => void;
 }
 
-function PendingReview({ count, loading }: PendingReviewProps) {
+function PendingReview({ count, loading, onReviewNow }: PendingReviewProps) {
   const t = useTranslations("transactions");
-  const tDash = useTranslations("dashboard");
-  const queryClient = useQueryClient();
-  const [preview, setPreview] = useState<CategorizePreview | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: previewCategorize,
-    onSuccess: (data) => {
-      if (data.uncategorizedCount === 0) {
-        toast.info(t("nothingLeftToCategorize"));
-        return;
-      }
-      setPreview(data);
-    },
-    onError: (err) => {
-      toast.error(
-        err instanceof Error ? err.message : tDash("categorizationFailed")
-      );
-    },
-  });
 
   if (!loading && count === 0) {
     return (
@@ -128,55 +110,37 @@ function PendingReview({ count, loading }: PendingReviewProps) {
   }
 
   return (
-    <>
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-            {t("pendingReview")}
-          </div>
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-full"
-            style={{
-              backgroundColor:
-                "color-mix(in oklch, var(--status-heads-up) 18%, transparent)",
-              color: "var(--status-heads-up)",
-            }}
-          >
-            <HelpCircle className="h-4 w-4" />
-          </div>
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          {t("pendingReview")}
         </div>
-        <div className="mt-2 font-serif text-3xl tabular-nums">
-          {loading ? <span className="text-muted-foreground">—</span> : count}
-        </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {count === 1 ? t("needCloserLookOne") : t("needCloserLookOther")}
-        </div>
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending || loading || count === 0}
-          className="mt-3 inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {mutation.isPending ? t("loadingShort") : t("reviewNow")}
-        </button>
-      </div>
-
-      {preview && (
-        <CategorizeReviewDialog
-          preview={preview}
-          onClose={() => setPreview(null)}
-          onApplied={() => {
-            setPreview(null);
-            queryClient.invalidateQueries({ queryKey: ["summary"] });
-            queryClient.invalidateQueries({ queryKey: ["transactions"] });
-            queryClient.invalidateQueries({
-              queryKey: ["transactions-summary"],
-            });
-            queryClient.invalidateQueries({ queryKey: ["categories"] });
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-full"
+          style={{
+            backgroundColor:
+              "color-mix(in oklch, var(--status-heads-up) 18%, transparent)",
+            color: "var(--status-heads-up)",
           }}
-        />
-      )}
-    </>
+        >
+          <HelpCircle className="h-4 w-4" />
+        </div>
+      </div>
+      <div className="mt-2 font-serif text-3xl tabular-nums">
+        {loading ? <span className="text-muted-foreground">...</span> : count}
+      </div>
+      <div className="mt-0.5 text-xs text-muted-foreground">
+        {count === 1 ? t("needCloserLookOne") : t("needCloserLookOther")}
+      </div>
+      <button
+        type="button"
+        onClick={onReviewNow}
+        disabled={loading || count === 0}
+        className="mt-3 inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {t("reviewNow")}
+      </button>
+    </div>
   );
 }
 

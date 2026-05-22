@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { ProviderBadge } from "@/components/setup/provider-badge";
 import { translateProviderName } from "@/lib/i18n-data";
+import { getTransactionProviderLabel } from "@/lib/transaction-source-types";
 import { BANK_PROVIDERS } from "@/lib/types";
 
 interface TransactionSourceCellProps {
@@ -30,11 +31,9 @@ export function TransactionSourceCell({
 }: TransactionSourceCellProps) {
   const tBanks = useTranslations("banks");
   const info = BANK_PROVIDERS.find((b) => b.id === provider);
-  const providerName = translateProviderName(
-    provider,
-    info?.name ?? provider,
-    tBanks
-  );
+  const providerName =
+    getTransactionProviderLabel(provider) ??
+    translateProviderName(provider, info?.name ?? provider, tBanks);
 
   const { primary, secondary } = getAccountDisplayLabel(providerName, accountLabel);
   const tooltip = secondary ? `${primary} · ${secondary}` : primary;

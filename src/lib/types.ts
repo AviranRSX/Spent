@@ -275,7 +275,27 @@ export interface Integration {
 export interface SetupStatus {
   isConfigured: boolean;
   hasBankCredentials: boolean;
+  hasImportSources: boolean;
   hasAIProvider: boolean;
+}
+
+export type ImportTemplateType =
+  | "isracard_bill"
+  | "bank_account"
+  | "credit_card_export";
+
+export type ImportSourceKind = "bank" | "card";
+
+export interface ImportSource {
+  id: number;
+  label: string;
+  kind: ImportSourceKind;
+  templateType: ImportTemplateType;
+  accountHint: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastImportAt: string | null;
+  transactionCount: number;
 }
 
 export interface AppSettings {

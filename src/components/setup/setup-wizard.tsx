@@ -13,22 +13,33 @@ import { WorkspaceNameStep } from "@/components/setup/workspace-name-step";
 import { createWorkspace } from "@/lib/api";
 import { setActiveWorkspaceId } from "@/lib/workspace-store";
 import { useQueryClient } from "@tanstack/react-query";
+import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
 
 export type SetupMode = "first-run" | "new-workspace";
 
 type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
 
-const FIRST_RUN_STEPS = [
+const FIRST_RUN_STEPS = ENABLE_SCRAPER_SYNC ? [
   { n: 1 as const, label: "Connect" },
+  { n: 2 as const, label: "AI" },
+  { n: 5 as const, label: "Target" },
+  { n: 3 as const, label: "Budgets" },
+  { n: 4 as const, label: "Done" },
+] : [
   { n: 2 as const, label: "AI" },
   { n: 5 as const, label: "Target" },
   { n: 3 as const, label: "Budgets" },
   { n: 4 as const, label: "Done" },
 ];
 
-const NEW_WORKSPACE_STEPS = [
+const NEW_WORKSPACE_STEPS = ENABLE_SCRAPER_SYNC ? [
   { n: 0 as const, label: "Name" },
   { n: 1 as const, label: "Connect" },
+  { n: 5 as const, label: "Target" },
+  { n: 3 as const, label: "Budgets" },
+  { n: 4 as const, label: "Done" },
+] : [
+  { n: 0 as const, label: "Name" },
   { n: 5 as const, label: "Target" },
   { n: 3 as const, label: "Budgets" },
   { n: 4 as const, label: "Done" },
@@ -38,7 +49,7 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [step, setStep] = useState<WizardStep>(
-    mode === "new-workspace" ? 0 : 1
+    mode === "new-workspace" ? 0 : ENABLE_SCRAPER_SYNC ? 1 : 2
   );
   const [creating, setCreating] = useState(false);
 
@@ -51,7 +62,7 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
       const ws = await createWorkspace(name);
       setActiveWorkspaceId(ws.id);
       queryClient.invalidateQueries();
-      setStep(1);
+      setStep(ENABLE_SCRAPER_SYNC ? 1 : 5);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create workspace"
@@ -63,7 +74,7 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
 
   function handleFinish() {
     queryClient.invalidateQueries();
-    router.push("/?sync=1");
+    router.push(ENABLE_SCRAPER_SYNC ? "/?sync=1" : "/");
   }
 
   return (
@@ -97,23 +108,33 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
               />
             )}
             {step === 1 && (
-              <BankStep
-                onComplete={() =>
-                  setStep(mode === "new-workspace" ? 5 : 2)
-                }
-              />
+              ENABLE_SCRAPER_SYNC ? (
+                <BankStep
+                  onComplete={() =>
+                    setStep(mode === "new-workspace" ? 5 : 2)
+                  }
+                />
+              ) : null
             )}
             {step === 2 && (
               <AIStep
                 onComplete={() => setStep(5)}
-                onBack={() => setStep(1)}
+                onBack={ENABLE_SCRAPER_SYNC ? () => setStep(1) : undefined}
               />
             )}
             {step === 5 && (
               <MonthlyTargetStep
                 onComplete={() => setStep(3)}
                 onBack={() =>
-                  setStep(mode === "new-workspace" ? 1 : 2)
+                  setStep(
+                    mode === "new-workspace"
+                      ? ENABLE_SCRAPER_SYNC
+                        ? 1
+                        : 0
+                      : ENABLE_SCRAPER_SYNC
+                        ? 2
+                        : 2
+                  )
                 }
               />
             )}

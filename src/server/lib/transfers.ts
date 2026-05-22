@@ -1,12 +1,21 @@
 import "server-only";
 
-import type { BankProvider } from "@/lib/types";
-
 export type TransactionKind = "expense" | "income" | "transfer";
 
-const BANK_PROVIDERS_SET: ReadonlySet<BankProvider> = new Set<BankProvider>([
+const BANK_PROVIDERS_SET: ReadonlySet<string> = new Set([
+  "bank_account",
   "hapoalim",
   "leumi",
+  "mizrahi",
+  "discount",
+  "mercantile",
+  "beinleumi",
+  "otsarHahayal",
+  "union",
+  "pagi",
+  "yahav",
+  "massad",
+  "oneZero",
 ]);
 
 export const CREDIT_CARD_PAYMENT_PATTERNS: readonly RegExp[] = [
@@ -14,6 +23,7 @@ export const CREDIT_CARD_PAYMENT_PATTERNS: readonly RegExp[] = [
   /ישראכרט/i,
   /ישרא[\s־-]?כארד/i,
   /כאל/i,
+  /מקס/i,
   /מקסימום/i,
   /מאסטרקארד/i,
   /אמריקן\s*אקספרס/i,
@@ -31,8 +41,8 @@ export const CREDIT_CARD_PAYMENT_PATTERNS: readonly RegExp[] = [
   /\bAMERICAN\s+EXPRESS\b/i,
 ];
 
-export function isBankProvider(provider: string): provider is BankProvider {
-  return BANK_PROVIDERS_SET.has(provider as BankProvider);
+export function isBankProvider(provider: string): boolean {
+  return BANK_PROVIDERS_SET.has(provider);
 }
 
 function matchesTransferPattern(description: string): boolean {

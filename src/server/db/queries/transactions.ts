@@ -13,6 +13,11 @@ import {
   isTransactionSortField,
   TRANSACTION_SORT_SQL,
 } from "@/lib/transaction-sort";
+import {
+  BANK_TRANSACTION_PROVIDERS,
+  CARD_TRANSACTION_PROVIDERS,
+  type TransactionSourceType,
+} from "@/lib/transaction-source-types";
 export type TransactionKindFilter = "expense" | "income" | "all";
 
 interface RawTransaction {
@@ -41,8 +46,9 @@ export function insertTransactions(
   workspaceId: number,
   transactions: RawTransaction[],
   provider: string,
-  credentialId: number,
-  syncRunId: number
+  credentialId: number | null,
+  syncRunId: number,
+  options: { importSourceId?: number | null } = {}
 ): InsertResult {
   const db = getDb();
   let added = 0;
@@ -59,12 +65,12 @@ export function insertTransactions(
       workspace_id, account_number, date, processed_date, original_amount, original_currency,
       charged_amount, charged_currency, description, memo, type, status,
       identifier, installment_number, installment_total, provider, credential_id,
-      sync_run_id, dedup_hash, dedup_sequence, kind
+      sync_run_id, import_source_id, dedup_hash, dedup_sequence, kind
     ) VALUES (
       @workspaceId, @accountNumber, @date, @processedDate, @originalAmount, @originalCurrency,
       @chargedAmount, @chargedCurrency, @description, @memo, @type, @status,
       @identifier, @installmentNumber, @installmentTotal, @provider, @credentialId,
-      @syncRunId, @dedupHash, @dedupSequence, @kind
+      @syncRunId, @importSourceId, @dedupHash, @dedupSequence, @kind
     )
     ON CONFLICT(workspace_id, dedup_hash, dedup_sequence) DO UPDATE SET
       status = CASE WHEN transactions.status = 'pending' THEN excluded.status ELSE transactions.status END,
@@ -116,6 +122,7 @@ export function insertTransactions(
         provider,
         credentialId,
         syncRunId: syncRunId,
+        importSourceId: options.importSourceId ?? null,
         dedupHash: hash,
         dedupSequence: sequence,
         kind,
@@ -154,6 +161,8 @@ interface QueryParams {
   offset?: number;
   kind?: TransactionKindFilter;
   provider?: string;
+  sourceType?: TransactionSourceType;
+  needsReview?: boolean;
   /** @deprecated Use credentialIds */
   credentialId?: number;
   credentialIds?: number[];
@@ -170,6 +179,27 @@ function appendCredentialIdsFilter(
   const placeholders = credentialIds.map(() => "?").join(",");
   conditions.push(`${col} IN (${placeholders})`);
   for (const id of credentialIds) values.push(id);
+}
+
+function appendProviderListFilter(
+  conditions: string[],
+  values: (string | number)[],
+  providers: readonly string[],
+  columnPrefix = ""
+): void {
+  if (providers.length === 0) return;
+  const col = `${columnPrefix}provider`;
+  const placeholders = providers.map(() => "?").join(",");
+  conditions.push(`${col} IN (${placeholders})`);
+  for (const provider of providers) values.push(provider);
+}
+
+function providersForSourceType(
+  sourceType: TransactionSourceType | undefined
+): readonly string[] | null {
+  if (sourceType === "bank") return BANK_TRANSACTION_PROVIDERS;
+  if (sourceType === "card") return CARD_TRANSACTION_PROVIDERS;
+  return null;
 }
 
 function resolveSortSql(sort: string | undefined): string {
@@ -220,13 +250,19 @@ export function queryTransactions(
   }
   const kind: TransactionKindFilter = params.kind ?? "all";
   if (kind === "income") {
-    conditions.push("t.charged_amount > 0");
+    conditions.push("t.kind = 'income'");
   } else if (kind === "expense") {
-    conditions.push("t.charged_amount < 0");
+    conditions.push("t.kind = 'expense'");
   }
   if (params.provider) {
     conditions.push("t.provider = ?");
     values.push(params.provider);
+  } else {
+    const providers = providersForSourceType(params.sourceType);
+    if (providers) appendProviderListFilter(conditions, values, providers, "t.");
+  }
+  if (params.needsReview) {
+    conditions.push("t.needs_review = 1");
   }
   const credentialIds =
     params.credentialIds && params.credentialIds.length > 0
@@ -670,6 +706,24 @@ export function batchSetNeedsReview(
   })();
 }
 
+export function countExistingDedupHashes(
+  workspaceId: number,
+  hashes: string[]
+): Map<string, number> {
+  if (hashes.length === 0) return new Map();
+  const unique = [...new Set(hashes)];
+  const placeholders = unique.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT dedup_hash as hash, COUNT(*) as count
+       FROM transactions
+       WHERE workspace_id = ? AND dedup_hash IN (${placeholders})
+       GROUP BY dedup_hash`
+    )
+    .all(workspaceId, ...unique) as { hash: string; count: number }[];
+  return new Map(rows.map((row) => [row.hash, row.count]));
+}
+
 export interface NeedsReviewCount {
   categoryId: number;
   count: number;
@@ -695,6 +749,7 @@ export interface TransactionsSummaryParams {
   /** @deprecated Use credentialIds */
   credentialId?: number;
   credentialIds?: number[];
+  sourceType?: TransactionSourceType;
 }
 
 export function getTransactionsSummary(
@@ -711,6 +766,10 @@ export function getTransactionsSummary(
     "status = 'completed'",
   ];
   const baseValues: (string | number)[] = [workspaceId, from, to];
+  const sourceProviders = providersForSourceType(params.sourceType);
+  if (sourceProviders) {
+    appendProviderListFilter(baseConditions, baseValues, sourceProviders);
+  }
   const summaryCredentialIds =
     params.credentialIds && params.credentialIds.length > 0
       ? params.credentialIds
@@ -724,7 +783,7 @@ export function getTransactionsSummary(
     .prepare(
       `SELECT COALESCE(SUM(charged_amount), 0) as total, COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND charged_amount > 0`
+       WHERE ${baseWhere} AND kind = 'income'`
     )
     .get(...baseValues) as { total: number; count: number };
 
@@ -732,20 +791,22 @@ export function getTransactionsSummary(
     .prepare(
       `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total, COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND charged_amount < 0`
+       WHERE ${baseWhere} AND kind = 'expense'`
     )
     .get(...baseValues) as { total: number; count: number };
 
   const pickLargest = (sign: "income" | "expense"): TransactionWithCategory | null => {
-    const cmp = sign === "income" ? "> 0" : "< 0";
     const tConditions = [
       "t.workspace_id = ?",
       "t.date >= ?",
       "t.date <= ?",
       "t.status = 'completed'",
-      `t.charged_amount ${cmp}`,
+      "t.kind = ?",
     ];
-    const tValues: (string | number)[] = [workspaceId, from, to];
+    const tValues: (string | number)[] = [workspaceId, from, to, sign];
+    if (sourceProviders) {
+      appendProviderListFilter(tConditions, tValues, sourceProviders, "t.");
+    }
     appendCredentialIdsFilter(tConditions, tValues, summaryCredentialIds, "t.");
     const row = db
       .prepare(
@@ -764,7 +825,7 @@ export function getTransactionsSummary(
               SUM(ABS(charged_amount)) as total,
               COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND charged_amount < 0
+       WHERE ${baseWhere} AND kind = 'expense'
        GROUP BY description
        ORDER BY total DESC
        LIMIT 5`

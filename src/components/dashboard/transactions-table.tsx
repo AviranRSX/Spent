@@ -464,11 +464,12 @@ export function TransactionsTable({
               </TableHeader>
               <TableBody>
                 {transactions.map((txn) => {
-                  const isIncome = txn.chargedAmount > 0;
+                  const isIncome = txn.kind === "income";
                   const directionColor = isIncome
                     ? "var(--status-on-track)"
                     : "var(--status-over)";
-                  const categoryKind: Kind = isIncome ? "income" : "expense";
+                  const categoryKind: Kind =
+                    txn.kind === "income" ? "income" : "expense";
                   const categoryName = txn.categoryName
                     ? translateCategoryName(txn.categoryName, tCat)
                     : t("rowUncategorized");

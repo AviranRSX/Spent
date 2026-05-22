@@ -9,6 +9,7 @@ import {
 } from "@/server/lib/workspace-context";
 import { cancelOtpRequest } from "@/server/sync/otp-bridge";
 import { markSyncEnd, markSyncStart } from "@/server/sync/activity";
+import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
 
 function sseEvent(
   event: string,
@@ -18,6 +19,13 @@ function sseEvent(
 }
 
 export async function POST(request: Request) {
+  if (!ENABLE_SCRAPER_SYNC) {
+    return Response.json(
+      { success: false, message: "Scraper sync is disabled. Use XLSX import." },
+      { status: 404 }
+    );
+  }
+
   const body = (await request.json().catch(() => ({}))) as {
     credentialId?: number;
   };

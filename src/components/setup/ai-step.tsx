@@ -21,7 +21,7 @@ type AIChoice = "claude" | "ollama" | "none";
 
 interface AIStepProps {
   onComplete: () => void;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
 interface PullState {
@@ -228,9 +228,13 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
       </div>
 
       <footer className="flex items-center justify-between pt-2">
-        <Button variant="outline" onClick={onBack}>
-          ← Back
-        </Button>
+        {onBack ? (
+          <Button variant="outline" onClick={onBack}>
+            ← Back
+          </Button>
+        ) : (
+          <div />
+        )}
         <Button onClick={handleSave} disabled={!canContinue || saving}>
           {saving ? "Saving..." : "Continue →"}
         </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import {
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { RECOMMENDED_OLLAMA_MODELS, type AppSettings } from "@/lib/types";
-import { getSettings, saveAIConfig } from "@/lib/api";
+import { getSettings, listOllamaModels, saveAIConfig } from "@/lib/api";
 import { OllamaModelStatus } from "./ollama-model-status";
 import { SectionShell, SettingCard } from "./section-shell";
 import { toast } from "sonner";
@@ -71,6 +71,45 @@ function AIForm({ settings }: { settings: AppSettings }) {
   const [apiKey, setApiKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState(settings.ollamaUrl);
   const [ollamaModel, setOllamaModel] = useState(settings.ollamaModel);
+  const ollamaModelsQuery = useQuery({
+    queryKey: ["ollama-models", ollamaUrl],
+    queryFn: () => listOllamaModels(ollamaUrl),
+    enabled: provider === "ollama",
+  });
+  const fetchedOllamaModels = ollamaModelsQuery.data?.models;
+  const installedModels = useMemo(
+    () => fetchedOllamaModels ?? [],
+    [fetchedOllamaModels]
+  );
+  const modelOptions = useMemo(() => {
+    const installedSet = new Set(installedModels);
+    const recommendedNames = new Set(
+      RECOMMENDED_OLLAMA_MODELS.map((model) => model.name)
+    );
+    return [
+      ...installedModels.map((name) => ({
+        name,
+        installed: true,
+        info: RECOMMENDED_OLLAMA_MODELS.find((model) => model.name === name),
+      })),
+      ...RECOMMENDED_OLLAMA_MODELS.filter(
+        (model) => !installedSet.has(model.name)
+      ).map((info) => ({
+        name: info.name,
+        installed: false,
+        info,
+      })),
+      ...(!installedSet.has(ollamaModel) && !recommendedNames.has(ollamaModel)
+        ? [
+            {
+              name: ollamaModel,
+              installed: false,
+              info: undefined,
+            },
+          ]
+        : []),
+    ];
+  }, [installedModels, ollamaModel]);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -177,14 +216,21 @@ function AIForm({ settings }: { settings: AppSettings }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {RECOMMENDED_OLLAMA_MODELS.map((m) => (
+                  {modelOptions.map((m) => (
                     <SelectItem key={m.name} value={m.name}>
                       <div className="flex items-center gap-2">
                         <span>{m.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {m.sizeGb} GB
-                        </span>
-                        {m.recommended && (
+                        {m.info ? (
+                          <span className="text-xs text-muted-foreground">
+                            {m.info.sizeGb} GB
+                          </span>
+                        ) : null}
+                        {m.installed ? (
+                          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                            Installed
+                          </span>
+                        ) : null}
+                        {m.info?.recommended && (
                           <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
                             {t("recommendedTag")}
                           </span>
@@ -197,9 +243,16 @@ function AIForm({ settings }: { settings: AppSettings }) {
               <p className="text-xs text-muted-foreground">
                 {(() => {
                   const m = RECOMMENDED_OLLAMA_MODELS.find((m) => m.name === ollamaModel);
-                  return m ? ollamaModelDescription(m.name, m.description, tModels) : "";
+                  if (m) return ollamaModelDescription(m.name, m.description, tModels);
+                  if (installedModels.includes(ollamaModel)) return "Installed locally from Ollama.";
+                  return "Select an installed model or choose one to download.";
                 })()}
               </p>
+              {ollamaModelsQuery.data?.error ? (
+                <p className="text-xs text-destructive">
+                  {ollamaModelsQuery.data.error}
+                </p>
+              ) : null}
             </div>
             <OllamaModelStatus ollamaUrl={ollamaUrl} model={ollamaModel} />
           </div>

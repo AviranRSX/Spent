@@ -11,7 +11,11 @@ import type {
   Workspace,
   HomePayload,
   ActivitySnapshot,
+  ImportSource,
+  ImportSourceKind,
+  ImportTemplateType,
 } from "./types";
+import type { TransactionSourceType } from "./transaction-source-types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
 const BASE = "";
@@ -62,6 +66,23 @@ export function deleteWorkspace(id: number) {
 
 export function getSetupStatus() {
   return fetchJSON<SetupStatus>("/api/setup/status");
+}
+
+export function listImportSources() {
+  return fetchJSON<ImportSource[]>("/api/import-sources");
+}
+
+export function createImportSource(input: {
+  label: string;
+  kind: ImportSourceKind;
+  templateType: ImportTemplateType;
+  accountHint?: string | null;
+}) {
+  return fetchJSON<{ success: boolean; sourceId: number }>("/api/import-sources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 
 export function saveBankCredentials(
@@ -181,8 +202,12 @@ export function getTransactionsSummary(params: {
   from: string;
   to: string;
   credentialIds?: number[];
+  sourceType?: TransactionSourceType;
 }) {
   const sp = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.sourceType && params.sourceType !== "all") {
+    sp.set("sourceType", params.sourceType);
+  }
   if (params.credentialIds?.length) {
     for (const id of params.credentialIds) {
       sp.append("credentialIds", String(id));
@@ -203,6 +228,8 @@ export function getTransactions(params: {
   offset?: number;
   kind?: TransactionKindFilter;
   provider?: string;
+  sourceType?: TransactionSourceType;
+  needsReview?: boolean;
   credentialIds?: number[];
 }) {
   const searchParams = new URLSearchParams();
@@ -557,6 +584,78 @@ export function startSync(
   })();
 
   return { cancel: () => controller.abort() };
+}
+
+export interface ImportPreviewRow {
+  accountNumber: string;
+  date: string;
+  processedDate: string;
+  originalAmount: number;
+  originalCurrency: string;
+  chargedAmount: number;
+  chargedCurrency?: string;
+  description: string;
+  memo?: string;
+  type: "normal" | "installments";
+  status: "completed" | "pending";
+  identifier?: string | number;
+  dedupHash: string;
+  duplicate: boolean;
+}
+
+export interface ImportPreviewFile {
+  fileName: string;
+  kind: ImportSourceKind;
+  templateType: ImportTemplateType;
+  rows: ImportPreviewRow[];
+  duplicateCount: number;
+  errors: Array<{ sheetName: string; rowNumber: number; message: string }>;
+}
+
+export function previewImportFiles(
+  files: Array<{
+    file: File;
+    kind: ImportSourceKind;
+    templateType: ImportTemplateType;
+  }>
+) {
+  const form = new FormData();
+  form.set(
+    "metadata",
+    JSON.stringify(
+      files.map((item) => ({
+        fileName: item.file.name,
+        kind: item.kind,
+        templateType: item.templateType,
+      }))
+    )
+  );
+  for (const item of files) form.append("files", item.file);
+  return fetchJSON<{ success: boolean; files: ImportPreviewFile[] }>(
+    "/api/imports/preview",
+    { method: "POST", body: form }
+  );
+}
+
+export function commitImportPreview(files: ImportPreviewFile[]) {
+  return fetchJSON<{
+    success: boolean;
+    added: number;
+    updated: number;
+    categorized: number;
+    aiWarning: string | null;
+  }>("/api/imports/commit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      files: files.map((file) => ({
+        fileName: file.fileName,
+        kind: file.kind,
+        templateType: file.templateType,
+        rows: file.rows,
+      })),
+    }),
+  });
 }
 
 // Placeholder for last sync info

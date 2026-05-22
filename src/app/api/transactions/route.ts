@@ -3,10 +3,18 @@ import {
   queryTransactions,
   type TransactionKindFilter,
 } from "@/server/db/queries/transactions";
+import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 
 function parseKind(raw: string | null): TransactionKindFilter | undefined {
   if (raw === "expense" || raw === "income" || raw === "all") {
+    return raw;
+  }
+  return undefined;
+}
+
+function parseSourceType(raw: string | null): TransactionSourceType | undefined {
+  if (raw === "bank" || raw === "card" || raw === "all") {
     return raw;
   }
   return undefined;
@@ -46,6 +54,8 @@ export async function GET(request: Request) {
       : undefined,
     kind: parseKind(searchParams.get("kind")),
     provider: searchParams.get("provider") ?? undefined,
+    sourceType: parseSourceType(searchParams.get("sourceType")),
+    needsReview: searchParams.get("needsReview") === "true",
     credentialIds: credentialIds.length > 0 ? credentialIds : undefined,
   });
 

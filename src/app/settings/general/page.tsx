@@ -17,8 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { SectionShell, SettingCard } from "@/components/settings/section-shell";
 import { WorkspaceNameCard } from "@/components/settings/workspace-controls";
-import { getSettings, getSummary, updateSettings } from "@/lib/api";
+import { getSettings, getSetupStatus, getSummary, updateSettings } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
+import { shouldShowScraperSyncSettings } from "@/lib/settings-visibility";
 import type { Locale } from "@/i18n/routing";
 
 function todayLocalISO(): string {
@@ -41,11 +42,18 @@ export default function GeneralSettingsPage() {
     queryKey: ["settings"],
     queryFn: getSettings,
   });
+  const { data: setupStatus } = useQuery({
+    queryKey: ["setup-status"],
+    queryFn: getSetupStatus,
+  });
 
   const { data: summary } = useQuery({
     queryKey: ["summary", monthStartLocalISO(), todayLocalISO()],
     queryFn: () => getSummary({ from: monthStartLocalISO(), to: todayLocalISO() }),
   });
+  const showScraperSyncSettings = setupStatus
+    ? shouldShowScraperSyncSettings(setupStatus)
+    : false;
 
   return (
     <SectionShell title={t("title")} description={t("description")}>
@@ -61,12 +69,15 @@ export default function GeneralSettingsPage() {
             key={settings.monthsToSync + ":" + settings.paydayDay}
             initialMonths={settings.monthsToSync}
             initialPayday={settings.paydayDay}
+            showSyncWindow={showScraperSyncSettings}
           />
-          <AutoSyncCard
-            key={`auto:${settings.autoSyncEnabled}:${settings.autoSyncTime}`}
-            initialEnabled={settings.autoSyncEnabled}
-            initialTime={settings.autoSyncTime}
-          />
+          {showScraperSyncSettings ? (
+            <AutoSyncCard
+              key={`auto:${settings.autoSyncEnabled}:${settings.autoSyncTime}`}
+              initialEnabled={settings.autoSyncEnabled}
+              initialTime={settings.autoSyncTime}
+            />
+          ) : null}
         </>
       ) : (
         <SettingCard>
@@ -157,9 +168,11 @@ function MonthlyTargetCard({
 function GeneralForm({
   initialMonths,
   initialPayday,
+  showSyncWindow,
 }: {
   initialMonths: number;
   initialPayday: number;
+  showSyncWindow: boolean;
 }) {
   const t = useTranslations("settings.general");
   const tCommon = useTranslations("common");
@@ -181,30 +194,32 @@ function GeneralForm({
 
   return (
     <SettingCard
-      title={t("syncWindowTitle")}
-      description={t("syncWindowDescription")}
+      title={showSyncWindow ? t("syncWindowTitle") : t("payday")}
+      description={showSyncWindow ? t("syncWindowDescription") : t("paydayHint")}
     >
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-foreground/80">
-            {t("monthsToSync")}
+      <div className={showSyncWindow ? "grid gap-5 sm:grid-cols-2" : "max-w-xs"}>
+        {showSyncWindow ? (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-foreground/80">
+              {t("monthsToSync")}
+            </div>
+            <Select value={months} onValueChange={(v) => v && setMonths(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 6, 12].map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {m} {m === 1 ? tCommon("month") : tCommon("months")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {t("banksLimit")}
+            </p>
           </div>
-          <Select value={months} onValueChange={(v) => v && setMonths(v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3, 6, 12].map((m) => (
-                <SelectItem key={m} value={String(m)}>
-                  {m} {m === 1 ? tCommon("month") : tCommon("months")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-muted-foreground">
-            {t("banksLimit")}
-          </p>
-        </div>
+        ) : null}
         <div className="space-y-2">
           <div className="text-xs font-medium text-foreground/80">{t("payday")}</div>
           <Select value={paydayDay} onValueChange={(v) => v && setPaydayDay(v)}>
@@ -228,7 +243,7 @@ function GeneralForm({
         <Button
           onClick={() =>
             mutation.mutate({
-              monthsToSync: Number(months),
+              ...(showSyncWindow ? { monthsToSync: Number(months) } : {}),
               paydayDay: Number(paydayDay),
             })
           }

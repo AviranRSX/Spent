@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { listIntegrations, getSettings } from "@/lib/api";
 import { BANK_PROVIDERS } from "@/lib/types";
+import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
 import { ProviderBadge } from "./provider-badge";
 
 interface CompleteStepProps {
@@ -24,6 +25,7 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
   const { data: integrations = [] } = useQuery({
     queryKey: ["integrations"],
     queryFn: listIntegrations,
+    enabled: ENABLE_SCRAPER_SYNC,
   });
   const { data: settings } = useQuery({
     queryKey: ["settings"],
@@ -80,8 +82,8 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
           transition={{ delay: 0.22 }}
           className="mx-auto mt-2 max-w-md text-sm text-muted-foreground"
         >
-          When you click below, Spent will pull your transactions and bucket
-          them up. You can re-sync any time from the dashboard or settings.
+          When you click below, Spent will open your dashboard. Use Load
+          transactions to choose XLSX files from this computer.
         </motion.p>
       </div>
 
@@ -95,32 +97,43 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
           Setup summary
         </div>
 
-        <div className="border-t border-border/40 py-3">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            🏦 Connections · {integrations.length}
+        {ENABLE_SCRAPER_SYNC ? (
+          <div className="border-t border-border/40 py-3">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              🏦 Connections · {integrations.length}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {integrations.map((integ) => {
+                const info = BANK_PROVIDERS.find((b) => b.id === integ.provider);
+                if (!info) return null;
+                return (
+                  <span
+                    key={integ.provider}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-muted py-0.5 ps-0.5 pe-2.5 text-xs"
+                  >
+                    <ProviderBadge
+                      color={info.color}
+                      name={info.name}
+                      domain={info.domain}
+                      size={20}
+                      radius={6}
+                    />
+                    <span className="font-medium">{info.name}</span>
+                  </span>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {integrations.map((integ) => {
-              const info = BANK_PROVIDERS.find((b) => b.id === integ.provider);
-              if (!info) return null;
-              return (
-                <span
-                  key={integ.provider}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-muted py-0.5 ps-0.5 pe-2.5 text-xs"
-                >
-                  <ProviderBadge
-                    color={info.color}
-                    name={info.name}
-                    domain={info.domain}
-                    size={20}
-                    radius={6}
-                  />
-                  <span className="font-medium">{info.name}</span>
-                </span>
-              );
-            })}
+        ) : (
+          <div className="grid grid-cols-[100px_1fr] items-center gap-3 border-t border-border/40 py-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              📄 Imports
+            </span>
+            <span className="text-sm font-medium">
+              Local XLSX files from the dashboard
+            </span>
           </div>
-        </div>
+        )}
 
         <div className="grid grid-cols-[100px_1fr] items-center gap-3 border-t border-border/40 py-3">
           <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -143,7 +156,7 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
 
       <div className="flex justify-center">
         <Button size="lg" onClick={onFinish}>
-          Open my budgets →
+          Open dashboard →
         </Button>
       </div>
     </div>
@@ -152,8 +165,16 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
 
 function ImportProgress() {
   const [steps, setSteps] = useState<ImportStep[]>([
-    { id: "connect", label: "Connecting to providers", state: "active" },
-    { id: "fetch", label: "Ready to fetch 90 days of activity", state: "todo" },
+    ...(ENABLE_SCRAPER_SYNC
+      ? [{ id: "connect", label: "Connecting to providers", state: "active" as StepState }]
+      : [{ id: "files", label: "Ready to load XLSX files", state: "active" as StepState }]),
+    {
+      id: "preview",
+      label: ENABLE_SCRAPER_SYNC
+        ? "Ready to fetch 90 days of activity"
+        : "Ready to preview duplicates and row errors",
+      state: "todo",
+    },
     { id: "cat", label: "Ready to categorize transactions", state: "todo" },
     { id: "budgets", label: "Ready to suggest initial budgets", state: "todo" },
   ]);

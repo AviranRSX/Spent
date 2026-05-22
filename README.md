@@ -152,19 +152,19 @@ Toggle between English (default) and עברית from **Settings → Appearance**
 
 ```mermaid
 flowchart LR
-    Bank["🏦 Israeli bank<br/>(Isracard / Hapoalim / Max)"]
-    Scraper["Puppeteer scraper<br/>(israeli-bank-scrapers)"]
-    DB[("📦 SQLite<br/>data/spent.db<br/>(WAL mode)")]
-    AI{"🤖 AI provider<br/>Claude · Ollama · None"}
-    UI["🖥 Dashboard<br/>http://spent.localhost:41234"]
+    Bank[Israeli bank]
+    Scraper[Puppeteer scraper]
+    DB[(SQLite data/spent.db)]
+    AI{AI provider}
+    UI[Dashboard]
 
-    Bank -->|HTTPS<br/>credentials encrypted| Scraper
+    Bank -->|HTTPS, encrypted credentials| Scraper
     Scraper -->|new transactions| DB
     DB -->|uncategorized batch| AI
     AI -->|category proposals| DB
     DB --> UI
 
-    subgraph local["🔒 Your machine — 127.0.0.1 only"]
+    subgraph LocalMachine[Your machine - 127.0.0.1 only]
         Scraper
         DB
         UI

@@ -16,9 +16,11 @@ import {
 import { Trash2, AlertTriangle } from "lucide-react";
 import {
   deleteAllTransactions,
+  getSetupStatus,
   getSettings,
   updateSettings,
 } from "@/lib/api";
+import { shouldShowScraperSyncSettings } from "@/lib/settings-visibility";
 import { toast } from "sonner";
 import { SectionShell, SettingCard } from "@/components/settings/section-shell";
 import { WorkspaceDangerCard } from "@/components/settings/workspace-controls";
@@ -30,16 +32,23 @@ export default function DataSettingsPage() {
     queryKey: ["settings"],
     queryFn: getSettings,
   });
+  const { data: setupStatus } = useQuery({
+    queryKey: ["setup-status"],
+    queryFn: getSetupStatus,
+  });
+  const showScraperSyncSettings = setupStatus
+    ? shouldShowScraperSyncSettings(setupStatus)
+    : false;
 
   return (
     <SectionShell title={t("title")} description={t("description")}>
-      {settings ? (
+      {settings && showScraperSyncSettings ? (
         <ShowBrowserCard initial={settings.showBrowser} />
-      ) : (
+      ) : !settings ? (
         <SettingCard>
           <div className="text-sm text-muted-foreground">{tCommon("loading")}</div>
         </SettingCard>
-      )}
+      ) : null}
       <SettingCard
         title={t("storageCardTitle")}
         description={t("storageCardDescription")}

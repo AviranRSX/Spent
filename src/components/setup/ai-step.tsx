@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   RECOMMENDED_OLLAMA_MODELS,
   type OllamaModelInfo,
 } from "@/lib/types";
+import { buildOllamaModelOptions } from "@/lib/ollama-model-options";
 import {
   listOllamaModels,
   pullOllamaModel,
@@ -103,6 +104,14 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
   }, [choice, ollamaUrl, pullState?.status]);
 
   const modelInstalled = installedModels.includes(ollamaModel);
+  const modelOptions = useMemo(
+    () =>
+      buildOllamaModelOptions({
+        installedModels,
+        selectedModel: ollamaModel,
+      }),
+    [installedModels, ollamaModel]
+  );
 
   const canContinue =
     choice === "none" ||
@@ -207,6 +216,7 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
                         setUrl={setOllamaUrl}
                         model={ollamaModel}
                         setModel={setOllamaModel}
+                        modelOptions={modelOptions}
                         reachable={ollamaReachable}
                         modelInstalled={modelInstalled}
                         pullState={pullState}
@@ -359,6 +369,7 @@ function OllamaConfig({
   setUrl,
   model,
   setModel,
+  modelOptions,
   reachable,
   modelInstalled,
   pullState,
@@ -370,6 +381,7 @@ function OllamaConfig({
   setUrl: (v: string) => void;
   model: string;
   setModel: (v: string) => void;
+  modelOptions: ReturnType<typeof buildOllamaModelOptions>;
   reachable: boolean | null;
   modelInstalled: boolean;
   pullState: PullState | null;
@@ -428,8 +440,8 @@ function OllamaConfig({
         <Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
           Pick a model
         </Label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {RECOMMENDED_OLLAMA_MODELS.slice(0, 3).map((m) => (
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {modelOptions.map((m) => (
             <button
               key={m.name}
               type="button"
@@ -444,17 +456,29 @@ function OllamaConfig({
                 <span className="truncate text-[11px] font-bold tracking-tight">
                   {m.name}
                 </span>
-                {m.recommended && (
-                  <span className="rounded-full bg-primary/10 px-1 py-0 text-[8px] font-bold uppercase tracking-wider text-primary">
-                    rec
-                  </span>
-                )}
+                <span className="flex shrink-0 items-center gap-1">
+                  {m.installed && (
+                    <span className="rounded-full bg-primary/10 px-1 py-0 text-[8px] font-bold uppercase tracking-wider text-primary">
+                      ready
+                    </span>
+                  )}
+                  {m.info?.recommended && (
+                    <span className="rounded-full bg-primary/10 px-1 py-0 text-[8px] font-bold uppercase tracking-wider text-primary">
+                      rec
+                    </span>
+                  )}
+                </span>
               </div>
-              <div className="mt-0.5 font-mono text-[9px] text-muted-foreground">
-                {m.sizeGb} GB
-              </div>
+              {m.info ? (
+                <div className="mt-0.5 font-mono text-[9px] text-muted-foreground">
+                  {m.info.sizeGb} GB
+                </div>
+              ) : null}
               <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                {m.description}
+                {m.info?.description ??
+                  (m.installed
+                    ? "Installed locally from Ollama."
+                    : "Custom model name. Download it in Ollama before continuing.")}
               </p>
             </button>
           ))}

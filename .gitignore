@@ -53,6 +53,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-transactions
+/transactions
 # Local test scripts
 scripts/test-*

@@ -274,10 +274,13 @@ export interface Integration {
 
 export interface SetupStatus {
   isConfigured: boolean;
+  dataSourceMode: DataSourceMode | null;
   hasBankCredentials: boolean;
   hasImportSources: boolean;
   hasAIProvider: boolean;
 }
+
+export type DataSourceMode = "xlsx" | "scraper";
 
 export type ImportTemplateType =
   | "isracard_bill"
@@ -302,6 +305,7 @@ export interface ImportSource {
 
 export interface AppSettings {
   monthsToSync: number;
+  dataSourceMode: DataSourceMode | null;
   aiProvider: "claude" | "ollama" | "none";
   ollamaUrl: string;
   ollamaModel: string;
@@ -365,36 +369,10 @@ export interface BankProviderInfo {
   supportsProgrammaticTwoFactor?: boolean;
 }
 
-export interface OllamaModelInfo {
-  name: string;
-  sizeGb: number;
-  description: string;
-  recommended?: boolean;
-}
-
-export const RECOMMENDED_OLLAMA_MODELS: OllamaModelInfo[] = [
-  {
-    name: "llama3.2:3b",
-    sizeGb: 2.0,
-    description: "Recommended. Fast and accurate enough for categorizing.",
-    recommended: true,
-  },
-  {
-    name: "llama3.2:1b",
-    sizeGb: 1.3,
-    description: "Smallest and fastest. Slightly less accurate.",
-  },
-  {
-    name: "llama3.1:8b",
-    sizeGb: 4.7,
-    description: "Higher quality, slower, larger download.",
-  },
-  {
-    name: "qwen2.5:3b",
-    sizeGb: 1.9,
-    description: "Alternative 3B model from Alibaba.",
-  },
-];
+export {
+  RECOMMENDED_OLLAMA_MODELS,
+  type OllamaModelInfo,
+} from "./ollama-model-options";
 
 export const BANK_PROVIDERS: BankProviderInfo[] = [
   {

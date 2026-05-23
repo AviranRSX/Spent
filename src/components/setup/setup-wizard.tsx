@@ -10,51 +10,62 @@ import { MonthlyTargetStep } from "@/components/setup/monthly-target-step";
 import { BudgetsStep } from "@/components/setup/budgets-step";
 import { CompleteStep } from "@/components/setup/complete-step";
 import { WorkspaceNameStep } from "@/components/setup/workspace-name-step";
-import { createWorkspace } from "@/lib/api";
+import { DataSourceStep } from "@/components/setup/data-source-step";
+import { createWorkspace, saveDataSourceMode } from "@/lib/api";
 import { setActiveWorkspaceId } from "@/lib/workspace-store";
 import { useQueryClient } from "@tanstack/react-query";
-import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
+import type { DataSourceMode } from "@/lib/types";
 
 export type SetupMode = "first-run" | "new-workspace";
 
-type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-const FIRST_RUN_STEPS = ENABLE_SCRAPER_SYNC ? [
+const FIRST_RUN_STEPS = [
+  { n: 6 as const, label: "Source" },
   { n: 1 as const, label: "Connect" },
-  { n: 2 as const, label: "AI" },
-  { n: 5 as const, label: "Target" },
-  { n: 3 as const, label: "Budgets" },
-  { n: 4 as const, label: "Done" },
-] : [
   { n: 2 as const, label: "AI" },
   { n: 5 as const, label: "Target" },
   { n: 3 as const, label: "Budgets" },
   { n: 4 as const, label: "Done" },
 ];
 
-const NEW_WORKSPACE_STEPS = ENABLE_SCRAPER_SYNC ? [
+const NEW_WORKSPACE_STEPS = [
   { n: 0 as const, label: "Name" },
+  { n: 6 as const, label: "Source" },
   { n: 1 as const, label: "Connect" },
-  { n: 5 as const, label: "Target" },
-  { n: 3 as const, label: "Budgets" },
-  { n: 4 as const, label: "Done" },
-] : [
-  { n: 0 as const, label: "Name" },
   { n: 5 as const, label: "Target" },
   { n: 3 as const, label: "Budgets" },
   { n: 4 as const, label: "Done" },
 ];
 
-export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
+export function SetupWizard({
+  mode = "first-run",
+  initialDataSourceMode = null,
+}: {
+  mode?: SetupMode;
+  initialDataSourceMode?: DataSourceMode | null;
+}) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [dataSourceMode, setDataSourceMode] =
+    useState<DataSourceMode | null>(initialDataSourceMode);
   const [step, setStep] = useState<WizardStep>(
-    mode === "new-workspace" ? 0 : ENABLE_SCRAPER_SYNC ? 1 : 2
+    mode === "new-workspace"
+      ? 0
+      : initialDataSourceMode === "scraper"
+        ? 1
+        : initialDataSourceMode === "xlsx"
+          ? 2
+          : 6
   );
   const [creating, setCreating] = useState(false);
+  const [savingMode, setSavingMode] = useState(false);
 
-  const steps =
+  const allSteps =
     mode === "new-workspace" ? NEW_WORKSPACE_STEPS : FIRST_RUN_STEPS;
+  const steps = allSteps.filter(
+    (s) => dataSourceMode === "scraper" || s.n !== 1
+  );
 
   async function handleNameSubmit(name: string) {
     setCreating(true);
@@ -62,7 +73,7 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
       const ws = await createWorkspace(name);
       setActiveWorkspaceId(ws.id);
       queryClient.invalidateQueries();
-      setStep(ENABLE_SCRAPER_SYNC ? 1 : 5);
+      setStep(6);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to create workspace"
@@ -72,9 +83,26 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
     }
   }
 
+  async function handleDataSourceSelect(nextMode: DataSourceMode) {
+    setSavingMode(true);
+    try {
+      await saveDataSourceMode(nextMode);
+      setDataSourceMode(nextMode);
+      await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
+      await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      setStep(nextMode === "scraper" ? 1 : 2);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save data source"
+      );
+    } finally {
+      setSavingMode(false);
+    }
+  }
+
   function handleFinish() {
     queryClient.invalidateQueries();
-    router.push(ENABLE_SCRAPER_SYNC ? "/?sync=1" : "/");
+    router.push(dataSourceMode === "scraper" ? "/?sync=1" : "/");
   }
 
   return (
@@ -107,8 +135,14 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
                 submitting={creating}
               />
             )}
+            {step === 6 && (
+              <DataSourceStep
+                onSelect={handleDataSourceSelect}
+                submitting={savingMode}
+              />
+            )}
             {step === 1 && (
-              ENABLE_SCRAPER_SYNC ? (
+              dataSourceMode === "scraper" ? (
                 <BankStep
                   onComplete={() =>
                     setStep(mode === "new-workspace" ? 5 : 2)
@@ -119,7 +153,9 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
             {step === 2 && (
               <AIStep
                 onComplete={() => setStep(5)}
-                onBack={ENABLE_SCRAPER_SYNC ? () => setStep(1) : undefined}
+                onBack={() =>
+                  setStep(dataSourceMode === "scraper" ? 1 : 6)
+                }
               />
             )}
             {step === 5 && (
@@ -128,10 +164,10 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
                 onBack={() =>
                   setStep(
                     mode === "new-workspace"
-                      ? ENABLE_SCRAPER_SYNC
+                      ? dataSourceMode === "scraper"
                         ? 1
-                        : 0
-                      : ENABLE_SCRAPER_SYNC
+                        : 6
+                      : dataSourceMode === "scraper"
                         ? 2
                         : 2
                   )
@@ -144,7 +180,12 @@ export function SetupWizard({ mode = "first-run" }: { mode?: SetupMode }) {
                 onBack={() => setStep(5)}
               />
             )}
-            {step === 4 && <CompleteStep onFinish={handleFinish} />}
+            {step === 4 && (
+              <CompleteStep
+                dataSourceMode={dataSourceMode ?? "xlsx"}
+                onFinish={handleFinish}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>

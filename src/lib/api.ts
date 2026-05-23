@@ -14,6 +14,7 @@ import type {
   ImportSource,
   ImportSourceKind,
   ImportTemplateType,
+  DataSourceMode,
 } from "./types";
 import type { TransactionSourceType } from "./transaction-source-types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
@@ -66,6 +67,17 @@ export function deleteWorkspace(id: number) {
 
 export function getSetupStatus() {
   return fetchJSON<SetupStatus>("/api/setup/status");
+}
+
+export function saveDataSourceMode(mode: DataSourceMode) {
+  return fetchJSON<{ success: boolean; dataSourceMode: DataSourceMode }>(
+    "/api/setup/data-source",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    }
+  );
 }
 
 export function listImportSources() {

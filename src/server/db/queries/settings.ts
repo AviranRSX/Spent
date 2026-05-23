@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getDb } from "../index";
-import type { AppSettings } from "@/lib/types";
+import type { AppSettings, DataSourceMode } from "@/lib/types";
 
 // Global settings live in the `settings` table and apply to every workspace.
 // Currently: ai_provider, ai_ollama_url, ai_ollama_model, plus the encrypted
@@ -63,6 +63,22 @@ export const setSetting = setGlobalSetting;
 
 const AUTO_SYNC_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+export function isDataSourceMode(value: unknown): value is DataSourceMode {
+  return value === "xlsx" || value === "scraper";
+}
+
+export function getDataSourceMode(workspaceId: number): DataSourceMode | null {
+  const raw = getWorkspaceSetting(workspaceId, "data_source_mode");
+  return isDataSourceMode(raw) ? raw : null;
+}
+
+export function setDataSourceMode(
+  workspaceId: number,
+  mode: DataSourceMode
+): void {
+  setWorkspaceSetting(workspaceId, "data_source_mode", mode);
+}
+
 export function getAppSettings(workspaceId: number): AppSettings {
   const targetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
   const target = targetRaw != null ? Number(targetRaw) : NaN;
@@ -70,6 +86,7 @@ export function getAppSettings(workspaceId: number): AppSettings {
   const storedLang = getGlobalSetting("language");
   return {
     monthsToSync: Number(getWorkspaceSetting(workspaceId, "months_to_sync") ?? "3"),
+    dataSourceMode: getDataSourceMode(workspaceId),
     aiProvider: (getGlobalSetting("ai_provider") ?? "none") as AppSettings["aiProvider"],
     ollamaUrl: getGlobalSetting("ai_ollama_url") ?? "http://localhost:11434",
     ollamaModel: getGlobalSetting("ai_ollama_model") ?? "llama3.2:3b",
@@ -91,6 +108,19 @@ export function updateAppSettings(
   const update = db.transaction(() => {
     if (settings.monthsToSync !== undefined) {
       setWorkspaceSetting(workspaceId, "months_to_sync", String(settings.monthsToSync));
+    }
+    if (settings.dataSourceMode !== undefined) {
+      if (settings.dataSourceMode === null) {
+        getDb()
+          .prepare(
+            "DELETE FROM workspace_settings WHERE workspace_id = ? AND key = ?"
+          )
+          .run(workspaceId, "data_source_mode");
+      } else if (isDataSourceMode(settings.dataSourceMode)) {
+        setDataSourceMode(workspaceId, settings.dataSourceMode);
+      } else {
+        throw new Error("dataSourceMode must be 'xlsx' or 'scraper'");
+      }
     }
     if (settings.aiProvider !== undefined) {
       setGlobalSetting("ai_provider", settings.aiProvider);

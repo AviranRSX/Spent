@@ -5,11 +5,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { listIntegrations, getSettings } from "@/lib/api";
-import { BANK_PROVIDERS } from "@/lib/types";
-import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
+import { BANK_PROVIDERS, type DataSourceMode } from "@/lib/types";
 import { ProviderBadge } from "./provider-badge";
 
 interface CompleteStepProps {
+  dataSourceMode: DataSourceMode;
   onFinish: () => void;
 }
 
@@ -21,11 +21,12 @@ interface ImportStep {
   state: StepState;
 }
 
-export function CompleteStep({ onFinish }: CompleteStepProps) {
+export function CompleteStep({ dataSourceMode, onFinish }: CompleteStepProps) {
+  const scraperMode = dataSourceMode === "scraper";
   const { data: integrations = [] } = useQuery({
     queryKey: ["integrations"],
     queryFn: listIntegrations,
-    enabled: ENABLE_SCRAPER_SYNC,
+    enabled: scraperMode,
   });
   const { data: settings } = useQuery({
     queryKey: ["settings"],
@@ -82,8 +83,10 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
           transition={{ delay: 0.22 }}
           className="mx-auto mt-2 max-w-md text-sm text-muted-foreground"
         >
-          When you click below, Spent will open your dashboard. Use Load
-          transactions to choose XLSX files from this computer.
+          When you click below, Spent will open your dashboard.
+          {scraperMode
+            ? " The first sync can start right away."
+            : " Use Load transactions to choose XLSX files from this computer."}
         </motion.p>
       </div>
 
@@ -97,7 +100,7 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
           Setup summary
         </div>
 
-        {ENABLE_SCRAPER_SYNC ? (
+        {scraperMode ? (
           <div className="border-t border-border/40 py-3">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               🏦 Connections · {integrations.length}
@@ -152,7 +155,7 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
         </div>
       </motion.div>
 
-      <ImportProgress />
+      <ImportProgress dataSourceMode={dataSourceMode} />
 
       <div className="flex justify-center">
         <Button size="lg" onClick={onFinish}>
@@ -163,14 +166,15 @@ export function CompleteStep({ onFinish }: CompleteStepProps) {
   );
 }
 
-function ImportProgress() {
+function ImportProgress({ dataSourceMode }: { dataSourceMode: DataSourceMode }) {
+  const scraperMode = dataSourceMode === "scraper";
   const [steps, setSteps] = useState<ImportStep[]>([
-    ...(ENABLE_SCRAPER_SYNC
+    ...(scraperMode
       ? [{ id: "connect", label: "Connecting to providers", state: "active" as StepState }]
       : [{ id: "files", label: "Ready to load XLSX files", state: "active" as StepState }]),
     {
       id: "preview",
-      label: ENABLE_SCRAPER_SYNC
+      label: scraperMode
         ? "Ready to fetch 90 days of activity"
         : "Ready to preview duplicates and row errors",
       state: "todo",

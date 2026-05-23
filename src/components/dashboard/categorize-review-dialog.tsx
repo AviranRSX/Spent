@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { applyCategorize, getCategories } from "@/lib/api";
+import { buildCategorizeApplyPayload } from "@/lib/categorize-review";
 import { toast } from "sonner";
 import type { CategorizePreview } from "@/lib/api";
 
@@ -37,20 +38,13 @@ export function CategorizeReviewDialog({
   const [approvedMap, setApprovedMap] = useState<Record<string, boolean>>(
     () => Object.fromEntries(preview.proposedCategories.map((p) => [p.name, true]))
   );
+  const [fallbackMap, setFallbackMap] = useState<Record<string, string>>({});
 
   const applyMutation = useMutation({
     mutationFn: () =>
-      applyCategorize({
-        assignments: preview.assignments.map((a) => ({
-          transactionId: a.transactionId,
-          categoryName: a.categoryName,
-          isNew: a.isNew,
-          kind: a.kind,
-        })),
-        approvedNewCategoryNames: Object.entries(approvedMap)
-          .filter(([, ok]) => ok)
-          .map(([name]) => name),
-      }),
+      applyCategorize(
+        buildCategorizeApplyPayload({ preview, approvedMap, fallbackMap })
+      ),
     onSuccess: (data) => {
       toast.success(
         `Applied to ${data.appliedCount} transaction${data.appliedCount === 1 ? "" : "s"}` +
@@ -97,10 +91,20 @@ export function CategorizeReviewDialog({
         .sort((a, b) => b.count - a.count),
     [preview.existingCategoryUsage, existingCategories]
   );
+  const existingLeafCategories = useMemo(() => {
+    const parentIds = new Set(
+      existingCategories
+        .map((category) => category.parentId)
+        .filter((id): id is number => id != null)
+    );
+    return existingCategories
+      .filter((category) => !parentIds.has(category.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [existingCategories]);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[85vh] max-w-2xl gap-0 overflow-hidden p-0">
+      <DialogContent className="max-h-[90vh] w-[min(94vw,980px)] max-w-none gap-0 overflow-hidden p-0">
         <DialogHeader className="px-6 pb-3 pt-6">
           <DialogTitle className="font-serif text-2xl tracking-tight">
             AI categorization
@@ -183,8 +187,13 @@ export function CategorizeReviewDialog({
                       key={p.name}
                       proposal={p}
                       approved={approvedMap[p.name] ?? false}
+                      fallbackName={fallbackMap[p.name] ?? ""}
+                      existingCategories={existingLeafCategories}
                       onToggle={(v) =>
                         setApprovedMap((prev) => ({ ...prev, [p.name]: v }))
+                      }
+                      onFallbackChange={(name) =>
+                        setFallbackMap((prev) => ({ ...prev, [p.name]: name }))
                       }
                     />
                   ))}
@@ -251,15 +260,21 @@ export function CategorizeReviewDialog({
 function ProposalRow({
   proposal,
   approved,
+  fallbackName,
+  existingCategories,
   onToggle,
+  onFallbackChange,
 }: {
   proposal: { name: string; transactionIds: number[]; samples: string[] };
   approved: boolean;
+  fallbackName: string;
+  existingCategories: Array<{ id: number; name: string }>;
   onToggle: (v: boolean) => void;
+  onFallbackChange: (name: string) => void;
 }) {
   return (
     <div
-      className={`flex items-start justify-between gap-4 rounded-xl border p-3 transition-colors ${
+      className={`grid gap-3 rounded-xl border p-3 transition-colors sm:grid-cols-[1fr_220px_auto] ${
         approved ? "border-primary/40 bg-primary/5" : "border-border bg-card"
       }`}
     >
@@ -277,11 +292,34 @@ function ProposalRow({
           {proposal.samples.join(" · ")}
         </div>
       </div>
-      <Switch
-        checked={approved}
-        onCheckedChange={onToggle}
-        aria-label={`Approve "${proposal.name}"`}
-      />
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          Use instead
+        </label>
+        <select
+          value={fallbackName}
+          onChange={(event) => {
+            onFallbackChange(event.target.value);
+            if (event.target.value) onToggle(false);
+          }}
+          disabled={approved}
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
+        >
+          <option value="">Create as new</option>
+          {existingCategories.map((category) => (
+            <option key={category.id} value={category.name}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center justify-end">
+        <Switch
+          checked={approved}
+          onCheckedChange={onToggle}
+          aria-label={`Approve "${proposal.name}"`}
+        />
+      </div>
     </div>
   );
 }

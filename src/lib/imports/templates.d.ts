@@ -15,6 +15,7 @@ export interface ImportSourceKindOption {
 
 export const IMPORT_TEMPLATE_DEFINITIONS: ImportTemplateDefinition[];
 export const IMPORT_SOURCE_KIND_OPTIONS: ImportSourceKindOption[];
+export const IMPORT_WORKBOOK_ACCEPT: string;
 
 export function getImportTemplatesForKind(
   kind: ImportSourceKind

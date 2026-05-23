@@ -73,7 +73,8 @@ export function previewImportRows(
 export async function commitImportFiles(
   workspaceId: number,
   workspaceName: string,
-  files: ImportCommitFile[]
+  files: ImportCommitFile[],
+  options: { categorize?: boolean } = {}
 ): Promise<{
   added: number;
   updated: number;
@@ -105,10 +106,10 @@ export async function commitImportFiles(
     updated += result.updated;
   }
 
-  const categorizedResult = await categorizeWorkspaceTransactions(
-    workspaceId,
-    workspaceName
-  );
+  const categorizedResult =
+    options.categorize === false
+      ? { categorized: 0, aiWarning: null }
+      : await categorizeWorkspaceTransactions(workspaceId, workspaceName);
 
   return {
     added,

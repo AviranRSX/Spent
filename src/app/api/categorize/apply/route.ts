@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   batchUpdateCategories,
+  batchSetNeedsReview,
 } from "@/server/db/queries/transactions";
 import {
   ensureCategory,
@@ -20,6 +21,7 @@ interface ApplyBody {
     categoryName: string;
     isNew: boolean;
     kind?: CategoryKind;
+    aiConfidence?: number | null;
   }>;
   /**
    * The set of new-category names the user approved during review. Anything in
@@ -52,9 +54,30 @@ export async function POST(request: Request) {
   const parentIds = getParentIds(workspaceId);
 
   const newCategoryCache = new Map<string, number>();
-  const updates: { id: number; categoryId: number }[] = [];
+  const updates: {
+    id: number;
+    categoryId: number;
+    aiConfidence?: number | null;
+  }[] = [];
+  const reviewFlags: { id: number; needsReview: boolean }[] = [];
   let createdCount = 0;
   let skippedCount = 0;
+
+  function pushUpdate(
+    transactionId: number,
+    categoryId: number,
+    confidence?: number | null
+  ) {
+    updates.push({
+      id: transactionId,
+      categoryId,
+      aiConfidence: confidence ?? null,
+    });
+    reviewFlags.push({
+      id: transactionId,
+      needsReview: confidence == null || confidence <= 4,
+    });
+  }
 
   for (const a of body.assignments) {
     if (a.isNew) {
@@ -62,7 +85,7 @@ export async function POST(request: Request) {
       if (isApproved) {
         const cached = newCategoryCache.get(a.categoryName.toLowerCase());
         if (cached != null) {
-          updates.push({ id: a.transactionId, categoryId: cached });
+          pushUpdate(a.transactionId, cached, a.aiConfidence);
         } else {
           // Check if it already exists before creating
           const wasExisting = getCategoryByName(workspaceId, a.categoryName);
@@ -74,7 +97,7 @@ export async function POST(request: Request) {
           );
           if (!wasExisting) createdCount++;
           newCategoryCache.set(a.categoryName.toLowerCase(), cat.id);
-          updates.push({ id: a.transactionId, categoryId: cat.id });
+          pushUpdate(a.transactionId, cat.id, a.aiConfidence);
         }
       } else {
         // Rejected. Try a fallback if user set one.
@@ -82,10 +105,7 @@ export async function POST(request: Request) {
         if (fallbackName) {
           const fallbackCat = getCategoryByName(workspaceId, fallbackName);
           if (fallbackCat && !parentIds.has(fallbackCat.id)) {
-            updates.push({
-              id: a.transactionId,
-              categoryId: fallbackCat.id,
-            });
+            pushUpdate(a.transactionId, fallbackCat.id, a.aiConfidence);
           } else {
             skippedCount++;
           }
@@ -97,7 +117,7 @@ export async function POST(request: Request) {
       // Existing category
       const cat = getCategoryByName(workspaceId, a.categoryName);
       if (cat && !parentIds.has(cat.id)) {
-        updates.push({ id: a.transactionId, categoryId: cat.id });
+        pushUpdate(a.transactionId, cat.id, a.aiConfidence);
       } else {
         skippedCount++;
       }
@@ -105,6 +125,7 @@ export async function POST(request: Request) {
   }
 
   batchUpdateCategories(workspaceId, updates);
+  batchSetNeedsReview(workspaceId, reviewFlags);
 
   return NextResponse.json({
     appliedCount: updates.length,

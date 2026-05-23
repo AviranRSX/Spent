@@ -62,15 +62,28 @@ const ICON_MAP: Record<string, LucideIcon> = {
 interface BudgetsStepProps {
   onComplete: () => void;
   onBack: () => void;
+  initialAmounts?: Map<number, number>;
 }
 
-export function BudgetsStep({ onComplete, onBack }: BudgetsStepProps) {
+export function BudgetsStep({
+  onComplete,
+  onBack,
+  initialAmounts,
+}: BudgetsStepProps) {
   const { data: categories = [], isLoading } = useQuery({
     queryKey: ["categories", "expense"],
     queryFn: () => getCategories("expense"),
   });
 
-  const [amounts, setAmounts] = useState<Map<number, string>>(new Map());
+  const [amounts, setAmounts] = useState<Map<number, string>>(
+    () =>
+      new Map(
+        [...(initialAmounts?.entries() ?? [])].map(([id, amount]) => [
+          id,
+          String(Math.round(amount)),
+        ])
+      )
+  );
   const [saving, setSaving] = useState(false);
 
   const setAmount = (id: number, value: string) => {
@@ -233,7 +246,7 @@ function CategoryCell({
           step={1}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="—"
+          placeholder="-"
           className="w-12 border-0 bg-transparent p-0 text-end text-[11px] tabular-nums outline-none placeholder:text-muted-foreground/40 focus:underline focus:decoration-foreground/30 focus:underline-offset-4"
           style={{
             fontWeight: filled ? 600 : 400,

@@ -54,7 +54,7 @@ function renderCorrections(corrections: PastCorrection[]): string {
     )
     .join("\n");
   return `
-Past corrections (the AI miscategorized these before — apply the lesson to similar merchants):
+Past corrections (the AI miscategorized these before - apply the lesson to similar merchants):
 ${lines}
 `;
 }
@@ -63,7 +63,7 @@ const CONFIDENCE_BLOCK = `Confidence scale (integer 1-7):
 - 7: certain. Well-known merchant, clearly fits this category.
 - 5-6: confident. Reasonable inference, minor ambiguity.
 - 4: moderate. The category fits but other categories are plausible.
-- 1-3: uncertain. Description is generic, merchant is unknown, or several categories could fit. Be honest — when in doubt give 1-3.`;
+- 1-3: uncertain. Description is generic, merchant is unknown, or several categories could fit. Be honest - when in doubt give 1-3.`;
 
 export function buildCategorizationPrompt(
   transactions: TransactionForCategorization[],

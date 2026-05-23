@@ -9,6 +9,8 @@ import { BANK_PROVIDERS } from "@/lib/types";
 interface TransactionSourceCellProps {
   provider: string;
   accountLabel: string | null;
+  accountNumber?: string | null;
+  showAccountNumber?: boolean;
 }
 
 export function getAccountDisplayLabel(
@@ -28,6 +30,8 @@ export function getAccountDisplayLabel(
 export function TransactionSourceCell({
   provider,
   accountLabel,
+  accountNumber,
+  showAccountNumber = false,
 }: TransactionSourceCellProps) {
   const tBanks = useTranslations("banks");
   const info = BANK_PROVIDERS.find((b) => b.id === provider);
@@ -35,7 +39,11 @@ export function TransactionSourceCell({
     getTransactionProviderLabel(provider) ??
     translateProviderName(provider, info?.name ?? provider, tBanks);
 
-  const { primary, secondary } = getAccountDisplayLabel(providerName, accountLabel);
+  const accountNumberLabel =
+    showAccountNumber && accountNumber?.trim() ? accountNumber.trim() : null;
+  const { primary, secondary } = accountNumberLabel
+    ? { primary: providerName, secondary: accountNumberLabel }
+    : getAccountDisplayLabel(providerName, accountLabel);
   const tooltip = secondary ? `${primary} · ${secondary}` : primary;
 
   return (

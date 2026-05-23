@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { CreditCard, HelpCircle, Landmark, WalletCards, X } from "lucide-react";
+import { HelpCircle, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/layout/app-shell";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
@@ -28,13 +28,14 @@ import {
   formatMonthLabel,
   getMonthRange,
 } from "@/lib/formatters";
-import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import {
   isPendingReviewFilter,
   serializeReviewFilter,
   type TransactionReviewFilter,
 } from "@/lib/transaction-review-filter";
 import type { Locale } from "@/i18n/routing";
+
+const TRANSACTIONS_SOURCE_TYPE = "bank" as const;
 
 export function TransactionsPage() {
   const t = useTranslations("transactions");
@@ -45,7 +46,6 @@ export function TransactionsPage() {
   const [accountFilter, setAccountFilter] = useState<number[]>([]);
   const [page, setPage] = useState(0);
   const [kind, setKind] = useState<TransactionKindFilter>("expense");
-  const [sourceType, setSourceType] = useState<TransactionSourceType>("all");
   const [reviewFilter, setReviewFilter] =
     useState<TransactionReviewFilter>("all");
   const [sortField, setSortField] = useState<TransactionSortField>("date");
@@ -56,16 +56,6 @@ export function TransactionsPage() {
     { value: "income", label: t("filterIncome") },
     { value: "expense", label: t("filterExpenses") },
   ];
-  const sourceOptions: {
-    value: TransactionSourceType;
-    label: string;
-    icon: typeof WalletCards;
-  }[] = [
-    { value: "all", label: t("sourceAll"), icon: WalletCards },
-    { value: "card", label: t("sourceCards"), icon: CreditCard },
-    { value: "bank", label: t("sourceBanks"), icon: Landmark },
-  ];
-
   const { from, to } = getMonthRange(selectedDate);
 
   const allCategoriesQuery = useQuery({
@@ -92,7 +82,6 @@ export function TransactionsPage() {
       accountFilter,
       page,
       kind,
-      sourceType,
       reviewFilter,
       sortField,
       sortOrder,
@@ -108,7 +97,7 @@ export function TransactionsPage() {
         limit: 50,
         offset: page * 50,
         kind,
-        sourceType,
+        sourceType: TRANSACTIONS_SOURCE_TYPE,
         needsReview: serializeReviewFilter(reviewFilter) === "true",
         sort: sortField,
         order: sortOrder,
@@ -117,12 +106,12 @@ export function TransactionsPage() {
   });
 
   const summaryQuery = useQuery({
-    queryKey: ["transactions-summary", from, to, sourceType],
+    queryKey: ["transactions-summary", from, to, TRANSACTIONS_SOURCE_TYPE],
     queryFn: () =>
       getTransactionsSummary({
         from,
         to,
-        sourceType,
+        sourceType: TRANSACTIONS_SOURCE_TYPE,
       }),
   });
 
@@ -164,7 +153,6 @@ export function TransactionsPage() {
           onReviewNow={() => {
             setReviewFilter("pending");
             setKind("all");
-            setSourceType("all");
             setSearch("");
             setCategoryFilter([]);
             setAccountFilter([]);
@@ -192,33 +180,6 @@ export function TransactionsPage() {
                       : "rounded-full px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   }
                 >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-border bg-card p-1">
-            {sourceOptions.map((opt) => {
-              const active = sourceType === opt.value;
-              const Icon = opt.icon;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    setSourceType(opt.value);
-                    setReviewFilter("all");
-                    setPage(0);
-                    setAccountFilter([]);
-                  }}
-                  className={
-                    active
-                      ? "inline-flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-colors"
-                      : "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  }
-                >
-                  <Icon className="size-3.5" aria-hidden="true" />
                   {opt.label}
                 </button>
               );

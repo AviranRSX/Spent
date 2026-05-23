@@ -91,6 +91,7 @@ interface TransactionsTableProps {
   sortOrder: SortOrder;
   onSortChange: (field: TransactionSortField) => void;
   isFetching?: boolean;
+  showAccountNumber?: boolean;
 }
 
 const PAGE_SIZE = 50;
@@ -113,6 +114,7 @@ export function TransactionsTable({
   sortOrder,
   onSortChange,
   isFetching = false,
+  showAccountNumber = false,
 }: TransactionsTableProps) {
   const t = useTranslations("transactions");
   const tCat = useTranslations("categoriesSeeded");
@@ -597,6 +599,8 @@ export function TransactionsTable({
                         <TransactionSourceCell
                           provider={txn.provider}
                           accountLabel={txn.accountLabel}
+                          accountNumber={txn.accountNumber}
+                          showAccountNumber={showAccountNumber}
                         />
                       </TableCell>
                       <TableCell

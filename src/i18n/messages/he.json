@@ -34,6 +34,7 @@
     "home": "בית",
     "budget": "תקציב",
     "transactions": "תנועות",
+    "creditCard": "כרטיס אשראי",
     "settings": "הגדרות",
     "starOnGitHub": "תייגו ב־GitHub",
     "brandTagline": "הכסף שלכם · קוד פתוח"
@@ -125,6 +126,15 @@
     "notConnected": "AI לא מחובר",
     "description": "תנועות לא יסווגו אוטומטית, ולכן התקציבים יופיעו ריקים עד שתחברו ספק AI.",
     "connectAi": "חיבור AI"
+  },
+  "creditCard": {
+    "pageTitle": "כרטיס אשראי",
+    "categoriesTitle": "קטגוריות",
+    "loading": "טוען...",
+    "emptyCategories": "עדיין אין הוצאות בכרטיס אשראי.",
+    "filterCard": "כרטיס",
+    "categoryMeta": "{percent}% · {count, plural, one {# תנועה} other {# תנועות}}",
+    "mostlyMerchant": "בעיקר {merchant}"
   },
   "transactions": {
     "pageTitle": "תנועות",

@@ -7,8 +7,9 @@ import {
 export type TransactionSourceType = "all" | "bank" | "card";
 
 export const CARD_TRANSACTION_PROVIDERS = [
-  "credit_card_export",
+  "max_bill",
   "isracard_bill",
+  "cal_bill",
   "isracard",
   "cal",
   "max",
@@ -18,7 +19,8 @@ export const CARD_TRANSACTION_PROVIDERS = [
 ] as const;
 
 export const BANK_TRANSACTION_PROVIDERS = [
-  "bank_account",
+  "hapoalim_bank_account",
+  "leumi_bank_account",
   "hapoalim",
   "leumi",
   "mizrahi",
@@ -31,7 +33,11 @@ export const BANK_TRANSACTION_PROVIDERS = [
   "yahav",
   "massad",
   "oneZero",
-] as const satisfies readonly (BankProvider | "bank_account")[];
+] as const satisfies readonly (
+  | BankProvider
+  | "hapoalim_bank_account"
+  | "leumi_bank_account"
+)[];
 
 const CARD_PROVIDER_SET = new Set<string>(CARD_TRANSACTION_PROVIDERS);
 const BANK_PROVIDER_SET = new Set<string>(BANK_TRANSACTION_PROVIDERS);

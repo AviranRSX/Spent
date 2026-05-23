@@ -281,8 +281,10 @@ export interface SetupStatus {
 
 export type ImportTemplateType =
   | "isracard_bill"
-  | "bank_account"
-  | "credit_card_export";
+  | "cal_bill"
+  | "hapoalim_bank_account"
+  | "leumi_bank_account"
+  | "max_bill";
 
 export type ImportSourceKind = "bank" | "card";
 

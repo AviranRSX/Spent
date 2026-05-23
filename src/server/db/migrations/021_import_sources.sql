@@ -3,7 +3,7 @@ CREATE TABLE import_sources (
   workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   label TEXT NOT NULL CHECK(length(label) <= 128),
   kind TEXT NOT NULL CHECK(kind IN ('bank','card')),
-  template_type TEXT NOT NULL CHECK(template_type IN ('isracard_bill','bank_account','credit_card_export')),
+  template_type TEXT NOT NULL CHECK(template_type IN ('isracard_bill','cal_bill','hapoalim_bank_account','leumi_bank_account','max_bill')),
   account_hint TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),

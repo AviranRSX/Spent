@@ -180,9 +180,11 @@ The default flow keeps bank credentials out of the app. XLSX files are read in m
 
 | Institution | Source type | Template |
 |---|---|---|
-| **Max** | Credit card | `credit_card_export` |
+| **Max** | Credit card | `max_bill` |
 | **Isracard** | Credit card | `isracard_bill` |
-| **Bank Hapoalim** | Bank account | `bank_account` |
+| **CAL** | Credit card | `cal_bill` |
+| **Bank Hapoalim** | Bank account | `hapoalim_bank_account` |
+| **Bank Leumi** | Bank account | `leumi_bank_account` |
 
 The parser definitions live in [`src/lib/imports/templates.js`](src/lib/imports/templates.js) and [`src/lib/imports/xlsx-parser.js`](src/lib/imports/xlsx-parser.js). Adding another XLSX format means adding a template definition, parser branch, and tests.
 
@@ -260,7 +262,7 @@ The dashboard import dialog supports multiple files at once.
 4. Click **Preview** to see parsed row counts, duplicate counts, and row-level errors.
 5. Click **Import**. New rows are inserted, duplicates are skipped by the composite dedup hash, and AI categorization runs if a provider is connected.
 
-Imported rows use provider IDs that match their template, such as `credit_card_export`, `isracard_bill`, or `bank_account`. The transactions page can filter totals and rows by cards, bank accounts, income, expenses, and pending review.
+Imported rows use provider IDs that match their template, such as `max_bill`, `isracard_bill`, `cal_bill`, `hapoalim_bank_account`, or `leumi_bank_account`. The transactions page can filter totals and rows by cards, bank accounts, income, expenses, and pending review.
 
 ## How you will use it
 

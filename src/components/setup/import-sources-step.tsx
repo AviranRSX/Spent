@@ -31,7 +31,7 @@ export function ImportSourcesStep({ onComplete }: ImportSourcesStepProps) {
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<ImportSourceKind>("card");
   const [templateType, setTemplateType] =
-    useState<ImportTemplateType>("credit_card_export");
+    useState<ImportTemplateType>("max_bill");
   const [accountHint, setAccountHint] = useState("");
   const [saving, setSaving] = useState(false);
 

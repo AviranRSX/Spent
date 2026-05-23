@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, InputGroup } from "@/components/ui/input";
@@ -9,11 +9,24 @@ import { updateSettings } from "@/lib/api";
 interface MonthlyTargetStepProps {
   onComplete: () => void;
   onBack: () => void;
+  initialValue?: number | null;
 }
 
-export function MonthlyTargetStep({ onComplete, onBack }: MonthlyTargetStepProps) {
+export function MonthlyTargetStep({
+  onComplete,
+  onBack,
+  initialValue = null,
+}: MonthlyTargetStepProps) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    if (!initialized.current && initialValue != null) {
+      setValue(String(Math.round(initialValue)));
+      initialized.current = true;
+    }
+  }, [initialValue]);
 
   const parsed = value.trim() === "" ? null : Number(value);
   const valid = parsed == null || (Number.isFinite(parsed) && parsed >= 0);

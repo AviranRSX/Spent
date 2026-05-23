@@ -11,7 +11,10 @@ import type { ImportCommitFile } from "@/server/imports/import-transactions";
 
 export async function POST(request: Request) {
   const workspaceId = getWorkspaceIdFromRequest(request);
-  const body = (await request.json()) as { files?: ImportCommitFile[] };
+  const body = (await request.json()) as {
+    files?: ImportCommitFile[];
+    categorize?: boolean;
+  };
   const files = body.files ?? [];
   if (files.length === 0) {
     return NextResponse.json(
@@ -39,7 +42,8 @@ export async function POST(request: Request) {
   const result = await commitImportFiles(
     workspaceId,
     workspace?.name ?? `Workspace ${workspaceId}`,
-    files
+    files,
+    { categorize: body.categorize !== false }
   );
 
   return NextResponse.json({ success: true, ...result });

@@ -8,7 +8,7 @@
     "start": "next start -H 127.0.0.1 -p 41234",
     "lint": "eslint",
     "test:imports": "node --test scripts/test-import-parsers.mjs scripts/test-import-templates.mjs",
-    "test:logic": "node --conditions react-server --experimental-transform-types --test scripts/test-transaction-ai-logic.mjs scripts/test-transaction-review-filter.mjs scripts/test-settings-visibility.mjs scripts/test-ollama-model-options.mjs",
+    "test:logic": "node --conditions react-server --experimental-transform-types --test scripts/test-transaction-ai-logic.mjs scripts/test-transaction-review-filter.mjs scripts/test-settings-visibility.mjs scripts/test-ollama-model-options.mjs scripts/test-setup-import-and-budget-suggestions.mjs",
     "security:audit": "npm audit --omit=dev",
     "security:outdated": "npm outdated",
     "docs:screenshots": "node scripts/capture-docs-screenshots.mjs",

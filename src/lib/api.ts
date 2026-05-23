@@ -498,6 +498,7 @@ export interface CategorizeAssignment {
   categoryName: string;
   isNew: boolean;
   kind: CategoryKindFilter;
+  aiConfidence: number | null;
 }
 
 export interface CategorizeProposal {
@@ -521,12 +522,73 @@ export function previewCategorize() {
   });
 }
 
+export interface CategorizePreviewProgress {
+  processed: number;
+  total: number;
+  currentStart?: number;
+  currentEnd?: number;
+}
+
+export async function previewCategorizeStream(
+  onProgress: (progress: CategorizePreviewProgress) => void
+) {
+  const res = await fetch(
+    "/api/categorize/preview/stream",
+    withWorkspaceHeader({ method: "POST" })
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "AI category preview failed");
+    throw new Error(text);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error("AI category preview stream is unavailable");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+        continue;
+      }
+
+      if (!line.startsWith("data: ") || !currentEvent) continue;
+
+      const data = JSON.parse(line.slice(6)) as unknown;
+      if (currentEvent === "progress") {
+        onProgress(data as CategorizePreviewProgress);
+      } else if (currentEvent === "complete") {
+        return data as CategorizePreview;
+      } else if (currentEvent === "error") {
+        const error = data as { message?: string };
+        throw new Error(error.message ?? "AI category preview failed");
+      }
+      currentEvent = "";
+    }
+  }
+
+  throw new Error("AI category preview ended before completion");
+}
+
 export function applyCategorize(payload: {
   assignments: Array<{
     transactionId: number;
     categoryName: string;
     isNew: boolean;
     kind?: CategoryKindFilter;
+    aiConfidence?: number | null;
   }>;
   approvedNewCategoryNames: string[];
   rejectionFallbacks?: Record<string, string>;
@@ -670,7 +732,10 @@ export function previewImportFiles(
   );
 }
 
-export function commitImportPreview(files: ImportPreviewFile[]) {
+export function commitImportPreview(
+  files: ImportPreviewFile[],
+  options: { categorize?: boolean } = {}
+) {
   return fetchJSON<{
     success: boolean;
     added: number;
@@ -687,8 +752,39 @@ export function commitImportPreview(files: ImportPreviewFile[]) {
         templateType: file.templateType,
         rows: file.rows,
       })),
+      categorize: options.categorize,
     }),
   });
+}
+
+export interface BudgetSuggestion {
+  categoryId: number;
+  categoryName: string;
+  mean: number;
+  median: number;
+  suggestedBudget: number;
+}
+
+export interface TotalBudgetSuggestion {
+  mean: number;
+  median: number;
+  suggestedBudget: number;
+}
+
+export interface BudgetSuggestionsResponse {
+  hasEnoughHistory: boolean;
+  message: string | null;
+  months: string[];
+  selectedMonthCount: number;
+  minMonthCount: number;
+  maxMonthCount: number;
+  categorySuggestions: BudgetSuggestion[];
+  totalBudgetSuggestion: TotalBudgetSuggestion | null;
+}
+
+export function getBudgetSuggestions(months?: number) {
+  const qs = months == null ? "" : `?months=${months}`;
+  return fetchJSON<BudgetSuggestionsResponse>(`/api/budget-suggestions${qs}`);
 }
 
 // Placeholder for last sync info

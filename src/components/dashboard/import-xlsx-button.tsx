@@ -21,6 +21,7 @@ import {
   getImportTemplateLabel,
   getImportTemplatesForKind,
   IMPORT_SOURCE_KIND_OPTIONS,
+  IMPORT_WORKBOOK_ACCEPT,
 } from "@/lib/imports/templates";
 import type { ImportSourceKind, ImportTemplateType } from "@/lib/types";
 
@@ -143,10 +144,10 @@ export function ImportXlsxButton({ onComplete }: ImportXlsxButtonProps) {
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Load transactions from XLSX</DialogTitle>
+            <DialogTitle>Load transactions from files</DialogTitle>
             <DialogDescription>
-              Choose local XLSX files, assign the right source type, preview rows,
-              then import.
+              Choose local XLS or XLSX files, assign the right source type,
+              preview rows, then import.
             </DialogDescription>
           </DialogHeader>
 
@@ -160,7 +161,7 @@ export function ImportXlsxButton({ onComplete }: ImportXlsxButtonProps) {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <FilePlus2 className="h-4 w-4" />
-                Choose XLSX files
+                Choose files
               </Button>
               <span className="text-xs text-muted-foreground">
                 The Windows file picker will open. Files are parsed in memory.
@@ -169,7 +170,7 @@ export function ImportXlsxButton({ onComplete }: ImportXlsxButtonProps) {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".xlsx"
+                accept={IMPORT_WORKBOOK_ACCEPT}
                 className="hidden"
                 onChange={(event) => handleFiles(event.target.files)}
               />

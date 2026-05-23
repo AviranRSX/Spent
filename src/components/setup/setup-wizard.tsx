@@ -11,32 +11,22 @@ import { BudgetsStep } from "@/components/setup/budgets-step";
 import { CompleteStep } from "@/components/setup/complete-step";
 import { WorkspaceNameStep } from "@/components/setup/workspace-name-step";
 import { DataSourceStep } from "@/components/setup/data-source-step";
+import { SetupImportStep } from "@/components/setup/setup-import-step";
+import {
+  BudgetSuggestionsStep,
+  type SetupBudgetDefaults,
+} from "@/components/setup/budget-suggestions-step";
 import { createWorkspace, saveDataSourceMode } from "@/lib/api";
+import {
+  getStepAfterXlsxImport,
+  getStepBeforeBudgetSuggestions,
+  getVisibleSetupSteps,
+  type SetupMode,
+  type WizardStep,
+} from "@/lib/setup/wizard-flow";
 import { setActiveWorkspaceId } from "@/lib/workspace-store";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DataSourceMode } from "@/lib/types";
-
-export type SetupMode = "first-run" | "new-workspace";
-
-type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-const FIRST_RUN_STEPS = [
-  { n: 6 as const, label: "Source" },
-  { n: 1 as const, label: "Connect" },
-  { n: 2 as const, label: "AI" },
-  { n: 5 as const, label: "Target" },
-  { n: 3 as const, label: "Budgets" },
-  { n: 4 as const, label: "Done" },
-];
-
-const NEW_WORKSPACE_STEPS = [
-  { n: 0 as const, label: "Name" },
-  { n: 6 as const, label: "Source" },
-  { n: 1 as const, label: "Connect" },
-  { n: 5 as const, label: "Target" },
-  { n: 3 as const, label: "Budgets" },
-  { n: 4 as const, label: "Done" },
-];
 
 export function SetupWizard({
   mode = "first-run",
@@ -60,12 +50,10 @@ export function SetupWizard({
   );
   const [creating, setCreating] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
+  const [budgetDefaults, setBudgetDefaults] =
+    useState<SetupBudgetDefaults | null>(null);
 
-  const allSteps =
-    mode === "new-workspace" ? NEW_WORKSPACE_STEPS : FIRST_RUN_STEPS;
-  const steps = allSteps.filter(
-    (s) => dataSourceMode === "scraper" || s.n !== 1
-  );
+  const steps = getVisibleSetupSteps(mode, dataSourceMode);
 
   async function handleNameSubmit(name: string) {
     setCreating(true);
@@ -88,6 +76,7 @@ export function SetupWizard({
     try {
       await saveDataSourceMode(nextMode);
       setDataSourceMode(nextMode);
+      setBudgetDefaults(null);
       await queryClient.invalidateQueries({ queryKey: ["setup-status"] });
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
       setStep(nextMode === "scraper" ? 1 : 2);
@@ -152,23 +141,46 @@ export function SetupWizard({
             )}
             {step === 2 && (
               <AIStep
-                onComplete={() => setStep(5)}
+                onComplete={() =>
+                  setStep(dataSourceMode === "xlsx" ? 7 : 5)
+                }
                 onBack={() =>
                   setStep(dataSourceMode === "scraper" ? 1 : 6)
+                }
+              />
+            )}
+            {step === 7 && (
+              <SetupImportStep
+                onImported={() => {
+                  setStep(getStepAfterXlsxImport());
+                }}
+                onSkip={() => {
+                  setStep(9);
+                }}
+                onBack={() => setStep(2)}
+              />
+            )}
+            {step === 9 && (
+              <BudgetSuggestionsStep
+                onComplete={(defaults) => {
+                  setBudgetDefaults(defaults);
+                  setStep(5);
+                }}
+                onBack={() =>
+                  setStep(getStepBeforeBudgetSuggestions(dataSourceMode))
                 }
               />
             )}
             {step === 5 && (
               <MonthlyTargetStep
                 onComplete={() => setStep(3)}
+                initialValue={budgetDefaults?.monthlyTarget ?? null}
                 onBack={() =>
                   setStep(
-                    mode === "new-workspace"
-                      ? dataSourceMode === "scraper"
+                    dataSourceMode === "xlsx"
+                      ? 9
+                      : mode === "new-workspace"
                         ? 1
-                        : 6
-                      : dataSourceMode === "scraper"
-                        ? 2
                         : 2
                   )
                 }
@@ -178,6 +190,7 @@ export function SetupWizard({
               <BudgetsStep
                 onComplete={() => setStep(4)}
                 onBack={() => setStep(5)}
+                initialAmounts={budgetDefaults?.categoryBudgets}
               />
             )}
             {step === 4 && (

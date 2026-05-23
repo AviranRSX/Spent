@@ -36,6 +36,8 @@ const IMPORT_TEMPLATE_DEFINITIONS = [
   },
 ];
 
+const IMPORT_WORKBOOK_ACCEPT = ".xls,.xlsx";
+
 const IMPORT_SOURCE_KIND_OPTIONS = [
   {
     kind: "card",
@@ -80,6 +82,7 @@ function templateMatchesSourceKind(templateType, kind) {
 module.exports = {
   IMPORT_TEMPLATE_DEFINITIONS,
   IMPORT_SOURCE_KIND_OPTIONS,
+  IMPORT_WORKBOOK_ACCEPT,
   getImportTemplatesForKind,
   getImportTemplateDefinition,
   getImportTemplateLabel,

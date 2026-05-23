@@ -554,6 +554,104 @@ export function getCategorySpendInRange(
     .all(...values) as CategorySpend[];
 }
 
+export interface MonthlyCategorySpend {
+  month: string;
+  categoryId: number;
+  categoryName: string;
+  amount: number;
+}
+
+export interface MonthlyBankSpend {
+  month: string;
+  amount: number;
+}
+
+export function getCompletedExpenseMonths(
+  workspaceId: number,
+  months: string[]
+): string[] {
+  if (months.length === 0) return [];
+  const placeholders = months.map(() => "?").join(",");
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT strftime('%Y-%m', date) as month
+       FROM transactions
+       WHERE workspace_id = ?
+         AND status = 'completed'
+         AND kind = 'expense'
+         AND strftime('%Y-%m', date) IN (${placeholders})
+       ORDER BY month ASC`
+    )
+    .all(workspaceId, ...months) as { month: string }[];
+  return rows.map((row) => row.month);
+}
+
+export function getAvailableCompletedExpenseMonths(
+  workspaceId: number,
+  beforeMonth: string
+): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT strftime('%Y-%m', date) as month
+       FROM transactions
+       WHERE workspace_id = ?
+         AND status = 'completed'
+         AND kind = 'expense'
+         AND strftime('%Y-%m', date) < ?
+       ORDER BY month ASC`
+    )
+    .all(workspaceId, beforeMonth) as { month: string }[];
+  return rows.map((row) => row.month);
+}
+
+export function getMonthlyCategorySpend(
+  workspaceId: number,
+  months: string[]
+): MonthlyCategorySpend[] {
+  if (months.length === 0) return [];
+  const placeholders = months.map(() => "?").join(",");
+  return getDb()
+    .prepare(
+      `SELECT strftime('%Y-%m', t.date) as month,
+              t.category_id as categoryId,
+              c.name as categoryName,
+              SUM(ABS(t.charged_amount)) as amount
+       FROM transactions t
+       JOIN categories c ON t.category_id = c.id
+       WHERE t.workspace_id = ?
+         AND t.status = 'completed'
+         AND t.kind = 'expense'
+         AND t.category_id IS NOT NULL
+         AND strftime('%Y-%m', t.date) IN (${placeholders})
+       GROUP BY month, t.category_id, c.name
+       ORDER BY month ASC, amount DESC`
+    )
+    .all(workspaceId, ...months) as MonthlyCategorySpend[];
+}
+
+export function getMonthlyBankSpend(
+  workspaceId: number,
+  months: string[]
+): MonthlyBankSpend[] {
+  if (months.length === 0) return [];
+  const monthPlaceholders = months.map(() => "?").join(",");
+  const providerPlaceholders = BANK_TRANSACTION_PROVIDERS.map(() => "?").join(",");
+  return getDb()
+    .prepare(
+      `SELECT strftime('%Y-%m', date) as month,
+              SUM(ABS(charged_amount)) as amount
+       FROM transactions
+       WHERE workspace_id = ?
+         AND status = 'completed'
+         AND kind = 'expense'
+         AND provider IN (${providerPlaceholders})
+         AND strftime('%Y-%m', date) IN (${monthPlaceholders})
+       GROUP BY month
+       ORDER BY month ASC`
+    )
+    .all(workspaceId, ...BANK_TRANSACTION_PROVIDERS, ...months) as MonthlyBankSpend[];
+}
+
 export interface UncategorizedSpend {
   amount: number;
   count: number;

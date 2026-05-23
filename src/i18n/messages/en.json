@@ -34,6 +34,7 @@
     "home": "Home",
     "budget": "Budget",
     "transactions": "Transactions",
+    "creditCard": "Credit card",
     "settings": "Settings",
     "starOnGitHub": "Star on GitHub",
     "brandTagline": "YOUR MONEY · OPEN SOURCE"
@@ -125,6 +126,15 @@
     "notConnected": "AI not connected",
     "description": "Transactions won't be auto-categorized, so budgets will appear empty until you connect an AI provider.",
     "connectAi": "Connect AI"
+  },
+  "creditCard": {
+    "pageTitle": "Credit card",
+    "categoriesTitle": "Categories",
+    "loading": "Loading...",
+    "emptyCategories": "No credit card expenses yet.",
+    "filterCard": "Card",
+    "categoryMeta": "{percent}% · {count, plural, one {# transaction} other {# transactions}}",
+    "mostlyMerchant": "Mostly {merchant}"
   },
   "transactions": {
     "pageTitle": "Transactions",

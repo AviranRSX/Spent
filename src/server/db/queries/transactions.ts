@@ -163,6 +163,7 @@ interface QueryParams {
   provider?: string;
   sourceType?: TransactionSourceType;
   needsReview?: boolean;
+  accountNumbers?: string[];
   /** @deprecated Use credentialIds */
   credentialId?: number;
   credentialIds?: number[];
@@ -192,6 +193,26 @@ function appendProviderListFilter(
   const placeholders = providers.map(() => "?").join(",");
   conditions.push(`${col} IN (${placeholders})`);
   for (const provider of providers) values.push(provider);
+}
+
+function appendAccountNumbersFilter(
+  conditions: string[],
+  values: (string | number)[],
+  accountNumbers: string[] | undefined,
+  columnPrefix = ""
+): void {
+  const cleanAccountNumbers = [
+    ...new Set(
+      (accountNumbers ?? [])
+        .map((accountNumber) => accountNumber.trim())
+        .filter((accountNumber) => accountNumber.length > 0)
+    ),
+  ];
+  if (cleanAccountNumbers.length === 0) return;
+  const col = `${columnPrefix}account_number`;
+  const placeholders = cleanAccountNumbers.map(() => "?").join(",");
+  conditions.push(`${col} IN (${placeholders})`);
+  for (const accountNumber of cleanAccountNumbers) values.push(accountNumber);
 }
 
 function providersForSourceType(
@@ -271,6 +292,7 @@ export function queryTransactions(
         ? [params.credentialId]
         : undefined;
   appendCredentialIdsFilter(conditions, values, credentialIds, "t.");
+  appendAccountNumbersFilter(conditions, values, params.accountNumbers, "t.");
 
   const where = `WHERE ${conditions.join(" AND ")}`;
 
@@ -296,6 +318,45 @@ export function queryTransactions(
     transactions: rows.map(mapTransactionRow),
     total: countRow.total,
   };
+}
+
+export function listTransactionAccountNumbers(
+  workspaceId: number,
+  params: {
+    from?: string;
+    to?: string;
+    sourceType?: TransactionSourceType;
+  } = {}
+): string[] {
+  const conditions = [
+    "workspace_id = ?",
+    "account_number IS NOT NULL",
+    "TRIM(account_number) != ''",
+  ];
+  const values: (string | number)[] = [workspaceId];
+
+  if (params.from) {
+    conditions.push("date >= ?");
+    values.push(params.from);
+  }
+  if (params.to) {
+    conditions.push("date <= ?");
+    values.push(params.to);
+  }
+
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT account_number as accountNumber
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY account_number COLLATE NOCASE ASC`
+    )
+    .all(...values) as { accountNumber: string }[];
+
+  return rows.map((row) => row.accountNumber);
 }
 
 export function getUncategorizedTransactionIds(workspaceId: number): number[] {
@@ -370,48 +431,77 @@ export function batchUpdateCategories(
 
 export function getMonthlySummary(
   workspaceId: number,
-  months: number
+  months: number,
+  params: { sourceType?: TransactionSourceType } = {}
 ): MonthlySummary[] {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= date('now', '-' || ? || ' months')",
+    "status = 'completed'",
+    "kind = 'expense'",
+  ];
+  const values: (string | number)[] = [workspaceId, months];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   return getDb()
     .prepare(
       `SELECT strftime('%Y-%m', date) as month,
               SUM(ABS(charged_amount)) as amount
        FROM transactions
-       WHERE workspace_id = ?
-         AND date >= date('now', '-' || ? || ' months')
-         AND status = 'completed'
-         AND kind = 'expense'
+       WHERE ${conditions.join(" AND ")}
        GROUP BY month
        ORDER BY month ASC`
     )
-    .all(workspaceId, months) as MonthlySummary[];
+    .all(...values) as MonthlySummary[];
 }
 
 export function getTopMerchants(
   workspaceId: number,
   from: string,
   to: string,
-  limit = 10
+  limit = 10,
+  params: { sourceType?: TransactionSourceType } = {}
 ): MerchantSummary[] {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   return getDb()
     .prepare(
       `SELECT description as name,
               SUM(ABS(charged_amount)) as amount,
               COUNT(*) as count
        FROM transactions
-       WHERE workspace_id = ? AND date >= ? AND date <= ? AND status = 'completed' AND kind = 'expense'
+       WHERE ${conditions.join(" AND ")}
        GROUP BY description
        ORDER BY amount DESC
        LIMIT ?`
     )
-    .all(workspaceId, from, to, limit) as MerchantSummary[];
+    .all(...values, limit) as MerchantSummary[];
 }
 
 export function getCategoryBreakdown(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): CategoryBreakdown[] {
+  const conditions = [
+    "t.workspace_id = ?",
+    "t.date >= ?",
+    "t.date <= ?",
+    "t.status = 'completed'",
+    "t.kind = 'expense'",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers, "t.");
   return getDb()
     .prepare(
       `SELECT
@@ -422,11 +512,11 @@ export function getCategoryBreakdown(
          COUNT(*) as count
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ? AND t.status = 'completed' AND t.kind = 'expense'
+       WHERE ${conditions.join(" AND ")}
        GROUP BY t.category_id
        ORDER BY amount DESC`
     )
-    .all(workspaceId, from, to) as CategoryBreakdown[];
+    .all(...values) as CategoryBreakdown[];
 }
 
 export interface CategorySpend {
@@ -438,18 +528,121 @@ export interface CategorySpend {
 export function getCategorySpendInRange(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): CategorySpend[] {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "category_id IS NOT NULL",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   return getDb()
     .prepare(
       `SELECT category_id as categoryId,
               SUM(ABS(charged_amount)) as amount,
               COUNT(*) as count
        FROM transactions
-       WHERE workspace_id = ? AND date >= ? AND date <= ? AND status = 'completed' AND kind = 'expense' AND category_id IS NOT NULL
+       WHERE ${conditions.join(" AND ")}
        GROUP BY category_id`
     )
-    .all(workspaceId, from, to) as CategorySpend[];
+    .all(...values) as CategorySpend[];
+}
+
+export interface UncategorizedSpend {
+  amount: number;
+  count: number;
+}
+
+export function getUncategorizedSpendInRange(
+  workspaceId: number,
+  from: string,
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
+): UncategorizedSpend {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "category_id IS NULL",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as amount,
+              COUNT(*) as count
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}`
+    )
+    .get(...values) as UncategorizedSpend;
+  return row;
+}
+
+export function getUncategorizedNeedsReviewCount(
+  workspaceId: number,
+  from: string,
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
+): number {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "category_id IS NULL",
+    "needs_review = 1",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}`
+    )
+    .get(...values) as { count: number };
+  return row.count;
+}
+
+export function getTopUncategorizedMerchant(
+  workspaceId: number,
+  from: string,
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
+): string | null {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "category_id IS NULL",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+  const row = getDb()
+    .prepare(
+      `SELECT description as merchant
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}
+       GROUP BY description
+       ORDER BY SUM(ABS(charged_amount)) DESC, COUNT(*) DESC
+       LIMIT 1`
+    )
+    .get(...values) as { merchant: string } | undefined;
+  return row?.merchant ?? null;
 }
 
 export interface CategoryTopMerchant {
@@ -461,8 +654,20 @@ export interface CategoryTopMerchant {
 export function getTopMerchantPerCategory(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): CategoryTopMerchant[] {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "category_id IS NOT NULL",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   return getDb()
     .prepare(
       `SELECT category_id as categoryId, description as merchant, amount
@@ -470,12 +675,12 @@ export function getTopMerchantPerCategory(
          SELECT category_id, description, SUM(ABS(charged_amount)) as amount,
                 ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY SUM(ABS(charged_amount)) DESC) as rn
          FROM transactions
-         WHERE workspace_id = ? AND date >= ? AND date <= ? AND status = 'completed' AND kind = 'expense' AND category_id IS NOT NULL
+         WHERE ${conditions.join(" AND ")}
          GROUP BY category_id, description
        )
        WHERE rn = 1`
     )
-    .all(workspaceId, from, to) as CategoryTopMerchant[];
+    .all(...values) as CategoryTopMerchant[];
 }
 
 export interface DailySpendPoint {
@@ -544,30 +749,52 @@ export function getTopMerchantsForCategory(
 export function getPeriodTotal(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): number {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   const row = getDb()
     .prepare(
       `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total
        FROM transactions
-       WHERE workspace_id = ? AND date >= ? AND date <= ? AND status = 'completed' AND kind = 'expense'`
+       WHERE ${conditions.join(" AND ")}`
     )
-    .get(workspaceId, from, to) as { total: number };
+    .get(...values) as { total: number };
   return row.total;
 }
 
 export function getPeriodCount(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): number {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   const row = getDb()
     .prepare(
       `SELECT COUNT(*) as count
        FROM transactions
-       WHERE workspace_id = ? AND date >= ? AND date <= ? AND status = 'completed' AND kind = 'expense'`
+       WHERE ${conditions.join(" AND ")}`
     )
-    .get(workspaceId, from, to) as { count: number };
+    .get(...values) as { count: number };
   return row.count;
 }
 
@@ -860,18 +1087,27 @@ export function getTransactionsSummary(
 export function getNeedsReviewCountByCategory(
   workspaceId: number,
   from: string,
-  to: string
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
 ): NeedsReviewCount[] {
+  const conditions = [
+    "workspace_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'expense'",
+    "needs_review = 1",
+    "category_id IS NOT NULL",
+  ];
+  const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
   return getDb()
     .prepare(
       `SELECT category_id as categoryId, COUNT(*) as count
        FROM transactions
-       WHERE workspace_id = ? AND date >= ? AND date <= ?
-         AND status = 'completed'
-         AND kind = 'expense'
-         AND needs_review = 1
-         AND category_id IS NOT NULL
+       WHERE ${conditions.join(" AND ")}
        GROUP BY category_id`
     )
-    .all(workspaceId, from, to) as NeedsReviewCount[];
+    .all(...values) as NeedsReviewCount[];
 }

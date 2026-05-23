@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { getSummary } from "@/lib/api";
 import { getMonthRange, formatMonthLabel, addMonths } from "@/lib/formatters";
@@ -9,8 +9,6 @@ import { PageHeader } from "@/components/layout/app-shell";
 import { HeroCard } from "./hero-card";
 import { CategoryGrid } from "./category-grid";
 import { PeriodSelector } from "./period-selector";
-import { SyncButton } from "./sync-button";
-import { CategorizeButton } from "./categorize-button";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CategoryViewMode } from "@/lib/types";
@@ -33,7 +31,6 @@ export function Dashboard() {
   const locale = useLocale() as Locale;
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<CategoryViewMode>("collapsed");
-  const queryClient = useQueryClient();
 
   useEffect(() => {
     setViewMode(readViewMode());
@@ -55,12 +52,6 @@ export function Dashboard() {
     queryFn: () => getSummary({ from, to }),
   });
 
-  const handleSyncComplete = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["summary"] });
-    queryClient.invalidateQueries({ queryKey: ["transactions"] });
-    queryClient.invalidateQueries({ queryKey: ["settings"] });
-  }, [queryClient]);
-
   const monthLabel = formatMonthLabel(selectedDate, locale);
   const summary = summaryQuery.data;
 
@@ -70,15 +61,11 @@ export function Dashboard() {
         title={t("pageTitle")}
         meta={monthLabel}
         actions={
-          <>
-            <PeriodSelector
-              label={monthLabel}
-              onPrev={() => setSelectedDate((d) => addMonths(d, -1))}
-              onNext={() => setSelectedDate((d) => addMonths(d, 1))}
-            />
-            <CategorizeButton onApplied={handleSyncComplete} />
-            <SyncButton onComplete={handleSyncComplete} />
-          </>
+          <PeriodSelector
+            label={monthLabel}
+            onPrev={() => setSelectedDate((d) => addMonths(d, -1))}
+            onNext={() => setSelectedDate((d) => addMonths(d, 1))}
+          />
         }
       />
 

@@ -231,12 +231,15 @@ export function getTransactions(params: {
   sourceType?: TransactionSourceType;
   needsReview?: boolean;
   credentialIds?: number[];
+  accountNumbers?: string[];
 }) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined) return;
     if (
-      (key === "categoryIds" || key === "credentialIds") &&
+      (key === "categoryIds" ||
+        key === "credentialIds" ||
+        key === "accountNumbers") &&
       Array.isArray(value)
     ) {
       for (const id of value) searchParams.append(key, String(id));
@@ -246,6 +249,20 @@ export function getTransactions(params: {
   });
   return fetchJSON<{ transactions: TransactionWithCategory[]; total: number }>(
     `/api/transactions?${searchParams}`
+  );
+}
+
+export function getTransactionAccountNumbers(params: {
+  from?: string;
+  to?: string;
+  sourceType?: TransactionSourceType;
+}) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) searchParams.set(key, String(value));
+  });
+  return fetchJSON<string[]>(
+    `/api/transactions/account-numbers?${searchParams}`
   );
 }
 
@@ -269,12 +286,16 @@ export function getSummary(params: {
   from: string;
   to: string;
   months?: number;
+  sourceType?: TransactionSourceType;
 }) {
   const searchParams = new URLSearchParams({
     from: params.from,
     to: params.to,
   });
   if (params.months) searchParams.set("months", String(params.months));
+  if (params.sourceType && params.sourceType !== "all") {
+    searchParams.set("sourceType", params.sourceType);
+  }
   return fetchJSON<DashboardSummary>(`/api/summary?${searchParams}`);
 }
 

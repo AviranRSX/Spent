@@ -78,7 +78,12 @@ export function CategoryCard({ data, onClick }: CategoryCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="group w-full cursor-pointer rounded-2xl border border-border bg-card p-5 text-start transition-colors duration-200 ease-out hover:border-[#D6C9AC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+      disabled={!onClick}
+      className={
+        onClick
+          ? "group w-full cursor-pointer rounded-2xl border border-border bg-card p-5 text-start transition-colors duration-200 ease-out hover:border-[#D6C9AC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          : "group w-full cursor-default rounded-2xl border border-border bg-card p-5 text-start"
+      }>
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <div

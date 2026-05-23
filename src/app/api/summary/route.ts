@@ -6,8 +6,11 @@ import {
   getPeriodTotal,
   getPeriodCount,
   getCategorySpendInRange,
+  getTopUncategorizedMerchant,
   getTopMerchantPerCategory,
   getNeedsReviewCountByCategory,
+  getUncategorizedNeedsReviewCount,
+  getUncategorizedSpendInRange,
 } from "@/server/db/queries/transactions";
 import { getAllCategories } from "@/server/db/queries/categories";
 import {
@@ -25,7 +28,16 @@ import {
   pacePhrase,
 } from "@/server/lib/pace";
 import { toLocalISODate } from "@/server/lib/date-utils";
+import { buildUncategorizedCategoryRow } from "@/server/lib/summary-categories";
+import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import type { BudgetSource, CategoryWithData } from "@/lib/types";
+
+function parseSourceType(raw: string | null): TransactionSourceType | undefined {
+  if (raw === "bank" || raw === "card" || raw === "all") {
+    return raw;
+  }
+  return undefined;
+}
 
 function parseISODate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -44,6 +56,8 @@ export async function GET(request: Request) {
   const from = searchParams.get("from") ?? defaultFrom;
   const to = searchParams.get("to") ?? defaultTo;
   const months = Number(searchParams.get("months") ?? "12");
+  const sourceType = parseSourceType(searchParams.get("sourceType"));
+  const sourceParams = sourceType === "all" ? {} : { sourceType };
 
   const fromDate = parseISODate(from);
   const monthLabel = fromDate.toLocaleDateString("en-US", { month: "long" });
@@ -65,11 +79,50 @@ export async function GET(request: Request) {
   const prevTo = toLocalISODate(prevMonthEnd);
 
   const categories = getAllCategories(workspaceId, "expense");
-  const currentSpend = getCategorySpendInRange(workspaceId, from, to);
-  const prevSpend = getCategorySpendInRange(workspaceId, prevFrom, prevTo);
-  const topMerchants = getTopMerchantPerCategory(workspaceId, from, to);
+  const currentSpend = getCategorySpendInRange(workspaceId, from, to, sourceParams);
+  const prevSpend = getCategorySpendInRange(
+    workspaceId,
+    prevFrom,
+    prevTo,
+    sourceParams
+  );
+  const currentUncategorized = getUncategorizedSpendInRange(
+    workspaceId,
+    from,
+    to,
+    sourceParams
+  );
+  const prevUncategorized = getUncategorizedSpendInRange(
+    workspaceId,
+    prevFrom,
+    prevTo,
+    sourceParams
+  );
+  const topMerchants = getTopMerchantPerCategory(
+    workspaceId,
+    from,
+    to,
+    sourceParams
+  );
+  const uncategorizedTopMerchant = getTopUncategorizedMerchant(
+    workspaceId,
+    from,
+    to,
+    sourceParams
+  );
   const explicitBudgets = getAllBudgets(workspaceId);
-  const needsReviewCounts = getNeedsReviewCountByCategory(workspaceId, from, to);
+  const needsReviewCounts = getNeedsReviewCountByCategory(
+    workspaceId,
+    from,
+    to,
+    sourceParams
+  );
+  const uncategorizedNeedsReviewCount = getUncategorizedNeedsReviewCount(
+    workspaceId,
+    from,
+    to,
+    sourceParams
+  );
   const needsReviewMap = new Map(
     needsReviewCounts.map((r) => [r.categoryId, r.count])
   );
@@ -268,10 +321,28 @@ export async function GET(request: Request) {
     });
   }
 
-  const categoriesWithData: CategoryWithData[] = [...parentRows, ...leafRows];
+  const uncategorizedRows =
+    currentUncategorized.count > 0
+      ? [
+          buildUncategorizedCategoryRow({
+            spent: currentUncategorized.amount,
+            count: currentUncategorized.count,
+            needsReviewCount: uncategorizedNeedsReviewCount,
+            previousSpent: prevUncategorized.amount,
+            timeElapsedPercent,
+            topMerchant: uncategorizedTopMerchant,
+          }),
+        ]
+      : [];
 
-  const periodTotal = getPeriodTotal(workspaceId, from, to);
-  const transactionCount = getPeriodCount(workspaceId, from, to);
+  const categoriesWithData: CategoryWithData[] = [
+    ...parentRows,
+    ...leafRows,
+    ...uncategorizedRows,
+  ];
+
+  const periodTotal = getPeriodTotal(workspaceId, from, to, sourceParams);
+  const transactionCount = getPeriodCount(workspaceId, from, to, sourceParams);
 
   // Hero total comes from the workspace-level monthly target. ALL spend
   // counts against it — tracking-mode is a per-category organizational tag
@@ -314,9 +385,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     periodTotal,
     transactionCount,
-    monthlySpend: getMonthlySummary(workspaceId, months),
-    topMerchants: getTopMerchants(workspaceId, from, to),
-    categoryBreakdown: getCategoryBreakdown(workspaceId, from, to),
+    monthlySpend: getMonthlySummary(workspaceId, months, sourceParams),
+    topMerchants: getTopMerchants(workspaceId, from, to, 10, sourceParams),
+    categoryBreakdown: getCategoryBreakdown(workspaceId, from, to, sourceParams),
     // New fields for the budgets dashboard:
     categoriesWithData,
     totalBudget,

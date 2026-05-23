@@ -36,6 +36,11 @@ export async function GET(request: Request) {
     .map((v) => Number(v))
     .filter((n) => Number.isFinite(n) && n > 0);
 
+  const accountNumbers = searchParams
+    .getAll("accountNumbers")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+
   const result = queryTransactions(workspaceId, {
     from: searchParams.get("from") ?? undefined,
     to: searchParams.get("to") ?? undefined,
@@ -57,6 +62,7 @@ export async function GET(request: Request) {
     sourceType: parseSourceType(searchParams.get("sourceType")),
     needsReview: searchParams.get("needsReview") === "true",
     credentialIds: credentialIds.length > 0 ? credentialIds : undefined,
+    accountNumbers: accountNumbers.length > 0 ? accountNumbers : undefined,
   });
 
   return NextResponse.json(result);

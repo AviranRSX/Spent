@@ -244,7 +244,9 @@ export function CategoryGrid({
             <CategoryCard
               key={c.categoryId}
               data={c}
-              onClick={() => setSelectedId(c.categoryId)}
+              onClick={
+                c.categoryId === 0 ? undefined : () => setSelectedId(c.categoryId)
+              }
             />
           ))}
         </div>

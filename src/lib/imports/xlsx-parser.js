@@ -3,8 +3,10 @@ const JSZip = require("jszip");
 
 const IMPORT_TEMPLATE_TYPES = [
   "isracard_bill",
-  "bank_account",
-  "credit_card_export",
+  "cal_bill",
+  "hapoalim_bank_account",
+  "leumi_bank_account",
+  "max_bill",
 ];
 
 const ILS_SYMBOLS = new Set(["₪", "שח", "ש\"ח", "ILS", "NIS"]);
@@ -192,6 +194,95 @@ function parseBankAccount(workbook, sourceLabel) {
   return { transactions, errors };
 }
 
+function parseLeumiBankAccount(workbook, sourceLabel) {
+  const transactions = [];
+  const errors = [];
+  const allText = workbook.rows.flat().join(" ");
+  const accountNumber = allText.match(/(\d{3}-\d{6}\/\d{2})/)?.[1] ?? sourceLabel;
+  for (const sheet of workbook.worksheets) {
+    const headerRow = findHeaderRow(sheet, ["תאריך", "תיאור", "בחובה", "בזכות"]);
+    if (!headerRow) continue;
+    for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
+      const vals = rowValues(sheet.getRow(rowNo)).filter((value) => asText(value));
+      const date = dateToISO(vals[0], [
+        { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
+      ]);
+      const processedDate =
+        dateToISO(vals[1], [
+          { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
+        ]) ?? date;
+      const description = asText(vals[2]);
+      if (!date && !description) continue;
+      const debit = asNumber(vals[4]);
+      const credit = asNumber(vals[5]);
+      const rawAmount = credit != null && credit !== 0 ? credit : debit != null ? -Math.abs(debit) : null;
+      if (!date || !description || rawAmount == null) {
+        errors.push(error(sheet.name, rowNo, "Missing date, description, or amount"));
+        continue;
+      }
+      transactions.push({
+        accountNumber,
+        date,
+        processedDate,
+        originalAmount: rawAmount,
+        originalCurrency: "ILS",
+        chargedAmount: rawAmount,
+        chargedCurrency: "ILS",
+        description,
+        memo: asText(vals[8]) || undefined,
+        type: "normal",
+        status: "completed",
+        identifier: asText(vals[3]) || undefined,
+      });
+    }
+  }
+  return { transactions, errors };
+}
+
+function parseCalBill(workbook, sourceLabel) {
+  const transactions = [];
+  const errors = [];
+  for (const sheet of workbook.worksheets) {
+    const headerRow = findHeaderRow(sheet, ["תאריך", "שם בית עסק", "סכום", "חיוב"]);
+    if (!headerRow) continue;
+    const accountLine = rowTexts(sheet.getRow(1)).join(" ");
+    const accountNumber = accountLine.match(/מסתיים ב-(\d{4,})/)?.[1] ?? sourceLabel;
+    const billingLine = rowTexts(sheet.getRow(3)).join(" ");
+    const billingDateText = billingLine.match(/לחיוב ב-(\d{1,2}\/\d{1,2}\/\d{2,4})/)?.[1];
+    const billingDate = billingDateText
+      ? dateToISO(billingDateText, [
+          { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
+        ])
+      : null;
+    for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
+      const vals = rowValues(sheet.getRow(rowNo));
+      const date = dateToISO(vals[0], []);
+      const description = asText(vals[1]);
+      if (!date && !description) continue;
+      const chargedAmount = signedCardAmount(vals[3]);
+      const originalAmount = signedCardAmount(vals[2]);
+      if (!date || !description || chargedAmount == null || originalAmount == null) {
+        errors.push(error(sheet.name, rowNo, "Missing date, merchant, or amount"));
+        continue;
+      }
+      transactions.push({
+        accountNumber,
+        date,
+        processedDate: billingDate ?? date,
+        originalAmount,
+        originalCurrency: "ILS",
+        chargedAmount,
+        chargedCurrency: "ILS",
+        description,
+        memo: normalizeDescription([vals[4], vals[5], vals[6]]) || undefined,
+        type: asText(vals[4]).includes("תשלומים") ? "installments" : "normal",
+        status: "completed",
+      });
+    }
+  }
+  return { transactions, errors };
+}
+
 function parseCreditCardExport(workbook, sourceLabel) {
   const transactions = [];
   const errors = [];
@@ -237,15 +328,18 @@ function parseCreditCardExport(workbook, sourceLabel) {
 }
 
 async function parseWorkbookBuffer(buffer, options) {
-  const workbook = await readOpenXmlWorkbook(buffer);
   const sourceLabel = options.sourceLabel || "Imported source";
   switch (options.templateType) {
     case "isracard_bill":
-      return parseIsracard(workbook, sourceLabel);
-    case "bank_account":
-      return parseBankAccount(workbook, sourceLabel);
-    case "credit_card_export":
-      return parseCreditCardExport(workbook, sourceLabel);
+      return parseIsracard(await readOpenXmlWorkbook(buffer), sourceLabel);
+    case "cal_bill":
+      return parseCalBill(await readOpenXmlWorkbook(buffer), sourceLabel);
+    case "hapoalim_bank_account":
+      return parseBankAccount(await readOpenXmlWorkbook(buffer), sourceLabel);
+    case "leumi_bank_account":
+      return parseLeumiBankAccount(readHtmlWorkbook(buffer), sourceLabel);
+    case "max_bill":
+      return parseCreditCardExport(await readOpenXmlWorkbook(buffer), sourceLabel);
     default:
       throw new Error(`Unsupported import template: ${options.templateType}`);
   }
@@ -321,6 +415,47 @@ function parseSheet(xml, name, sharedStrings) {
     getRow(rowNumber) {
       return rows.get(rowNumber) ?? { values: [] };
     },
+  };
+}
+
+function htmlDecode(value) {
+  return xmlDecode(value)
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#160;/g, " ")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function htmlCellText(html) {
+  return htmlDecode(html)
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[\u200e\u200f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readHtmlWorkbook(buffer) {
+  const text = new TextDecoder("utf-8").decode(buffer);
+  const rows = [];
+  for (const rowMatch of text.matchAll(/<tr\b[\s\S]*?<\/tr>/gi)) {
+    const values = [];
+    for (const cellMatch of rowMatch[0].matchAll(/<t[dh]\b[\s\S]*?<\/t[dh]>/gi)) {
+      values.push(htmlCellText(cellMatch[0]));
+    }
+    rows.push(values);
+  }
+  return {
+    rows,
+    worksheets: [
+      {
+        name: "Sheet1",
+        rowCount: rows.length,
+        getRow(rowNumber) {
+          return { values: rows[rowNumber - 1] ?? [] };
+        },
+      },
+    ],
   };
 }
 

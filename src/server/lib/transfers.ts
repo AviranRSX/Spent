@@ -3,7 +3,8 @@ import "server-only";
 export type TransactionKind = "expense" | "income" | "transfer";
 
 const BANK_PROVIDERS_SET: ReadonlySet<string> = new Set([
-  "bank_account",
+  "hapoalim_bank_account",
+  "leumi_bank_account",
   "hapoalim",
   "leumi",
   "mizrahi",
@@ -26,6 +27,7 @@ export const CREDIT_CARD_PAYMENT_PATTERNS: readonly RegExp[] = [
   /מקס/i,
   /מקסימום/i,
   /מאסטרקארד/i,
+  /מאסטרקרד/i,
   /אמריקן\s*אקספרס/i,
   /דיינרס/i,
   /תשלום\s*אשראי/i,

@@ -1,24 +1,38 @@
 const IMPORT_TEMPLATE_DEFINITIONS = [
   {
-    templateType: "credit_card_export",
+    templateType: "max_bill",
     kind: "card",
     name: "Max",
     description: "Credit card export",
-    sampleFile: "transaction-details_export_1779464233227.xlsx",
+    sampleFile: "max_aviran.xlsx",
   },
   {
     templateType: "isracard_bill",
     kind: "card",
     name: "Isracard",
     description: "Monthly card bill",
-    sampleFile: "2437_05_2026.xlsx",
+    sampleFile: "isracard_aviran.xlsx",
   },
   {
-    templateType: "bank_account",
+    templateType: "cal_bill",
+    kind: "card",
+    name: "CAL",
+    description: "Monthly card bill",
+    sampleFile: "cal_inbar_may.xlsx",
+  },
+  {
+    templateType: "hapoalim_bank_account",
     kind: "bank",
     name: "Hapoalim",
     description: "Bank account transactions",
-    sampleFile: "excelNewTransactions.xlsx",
+    sampleFile: "hapoalim_bank.xlsx",
+  },
+  {
+    templateType: "leumi_bank_account",
+    kind: "bank",
+    name: "Leumi",
+    description: "Bank account transactions",
+    sampleFile: "leumi_bank.xls",
   },
 ];
 

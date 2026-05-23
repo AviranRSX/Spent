@@ -1,7 +1,8 @@
 UPDATE transactions
 SET kind = 'transfer', updated_at = datetime('now')
 WHERE provider IN (
-  'bank_account',
+  'hapoalim_bank_account',
+  'leumi_bank_account',
   'hapoalim',
   'leumi',
   'mizrahi',
@@ -26,6 +27,7 @@ WHERE provider IN (
     OR description LIKE '%מקס%'
     OR description LIKE '%מקסימום%'
     OR description LIKE '%מאסטרקארד%'
+    OR description LIKE '%מאסטרקרד%'
     OR description LIKE '%אמריקן אקספרס%'
     OR description LIKE '%דיינרס%'
     OR description LIKE '%תשלום אשראי%'
@@ -43,7 +45,8 @@ WHERE provider IN (
 UPDATE transactions
 SET kind = 'income', updated_at = datetime('now')
 WHERE provider IN (
-  'bank_account',
+  'hapoalim_bank_account',
+  'leumi_bank_account',
   'hapoalim',
   'leumi',
   'mizrahi',

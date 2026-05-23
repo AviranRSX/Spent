@@ -21,20 +21,20 @@ import { BankHealthCard } from "./bank-health-card";
 import { SyncStatusPill } from "./sync-status-pill";
 import { SyncFailureBanner } from "./sync-failure-banner";
 import { CardError, CardSkeleton } from "./card-shell";
-import type { HomePayload, HomeSection } from "@/lib/types";
-import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
+import type { DataSourceMode, HomePayload, HomeSection } from "@/lib/types";
 
 const ROW_1 = "col-span-12 lg:col-span-8";
 const ROW_1_SIDE = "col-span-12 md:col-span-6 lg:col-span-4";
 const ROW_2 = "col-span-12 md:col-span-6 lg:col-span-7";
 const ROW_2_SIDE = "col-span-12 md:col-span-6 lg:col-span-5";
 
-export function HomePage() {
+export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const scraperMode = dataSourceMode === "scraper";
   const [autoStartSync] = useState(
-    () => ENABLE_SCRAPER_SYNC && searchParams.get("sync") === "1"
+    () => scraperMode && searchParams.get("sync") === "1"
   );
   const t = useTranslations("home");
   const skeletonLabels = useMemo<Record<HomeSection, string>>(
@@ -97,7 +97,7 @@ export function HomePage() {
         title={t("pageTitle")}
         actions={
           <>
-            {ENABLE_SCRAPER_SYNC && (
+            {scraperMode && (
               <SyncStatusPill
                 items={data?.bankHealth ?? null}
                 nextScheduledSync={data?.nextScheduledSync ?? null}
@@ -106,7 +106,7 @@ export function HomePage() {
               />
             )}
             <CategorizeButton onApplied={handleSyncOrCategorizeComplete} />
-            {ENABLE_SCRAPER_SYNC ? (
+            {scraperMode ? (
               <SyncButton
                 onComplete={handleSyncOrCategorizeComplete}
                 autoStart={autoStartSync}
@@ -119,7 +119,7 @@ export function HomePage() {
       />
 
       <div className="p-4 md:p-6 lg:p-8">
-        {ENABLE_SCRAPER_SYNC && (
+        {scraperMode && (
           <SyncFailureBanner
             items={data?.bankHealth ?? null}
             className="mb-4 md:mb-5 lg:mb-6"
@@ -134,7 +134,7 @@ export function HomePage() {
           {renderSection("recentTransactions", data, isLoading, isError, ROW_2, skeletonLabels)}
           {renderSection("topMerchants", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
           {renderSection("needsAttention", data, isLoading, isError, ROW_2, skeletonLabels)}
-          {ENABLE_SCRAPER_SYNC &&
+          {scraperMode &&
             renderSection("bankHealth", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
         </div>
       </div>

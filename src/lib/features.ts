@@ -1,1 +1,1 @@
-export const ENABLE_SCRAPER_SYNC = false;
+export const ENABLE_SCRAPER_SYNC = true;

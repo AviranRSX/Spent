@@ -10,6 +10,7 @@ import {
 import { cancelOtpRequest } from "@/server/sync/otp-bridge";
 import { markSyncEnd, markSyncStart } from "@/server/sync/activity";
 import { ENABLE_SCRAPER_SYNC } from "@/lib/features";
+import { getDataSourceMode } from "@/server/db/queries/settings";
 
 function sseEvent(
   event: string,
@@ -38,6 +39,15 @@ export async function POST(request: Request) {
   // (the in-app "Sync now" button). When it's absent we treat it as a
   // multi-workspace trigger from the menubar and sync every workspace.
   const headerPresent = hasWorkspaceHeader(request);
+  if (headerPresent) {
+    const workspaceId = getWorkspaceIdFromRequest(request);
+    if (getDataSourceMode(workspaceId) !== "scraper") {
+      return Response.json(
+        { success: false, message: "This workspace uses XLSX import." },
+        { status: 404 }
+      );
+    }
+  }
 
   const encoder = new TextEncoder();
   const pendingSyncRunIds = new Set<number>();

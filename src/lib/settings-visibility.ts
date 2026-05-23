@@ -1,10 +1,13 @@
+import type { DataSourceMode } from "@/lib/types";
+
 interface SetupModeStatus {
+  dataSourceMode: DataSourceMode | null;
   hasBankCredentials: boolean;
   hasImportSources: boolean;
 }
 
 interface MainAppAccessStatus {
-  scraperSyncEnabled: boolean;
+  dataSourceMode: DataSourceMode | null;
   hasBankCredentials: boolean;
   hasAIChoice: boolean;
 }
@@ -12,12 +15,15 @@ interface MainAppAccessStatus {
 export function shouldShowScraperSyncSettings(
   status: SetupModeStatus
 ): boolean {
-  return status.hasBankCredentials;
+  return status.dataSourceMode === "scraper" && status.hasBankCredentials;
 }
 
 export function canOpenMainApp(status: MainAppAccessStatus): boolean {
-  if (status.scraperSyncEnabled) {
+  if (status.dataSourceMode === "scraper") {
     return status.hasBankCredentials;
   }
-  return status.hasAIChoice;
+  if (status.dataSourceMode === "xlsx") {
+    return true;
+  }
+  return false;
 }

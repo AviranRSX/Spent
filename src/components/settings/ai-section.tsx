@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { RECOMMENDED_OLLAMA_MODELS, type AppSettings } from "@/lib/types";
+import { buildOllamaModelOptions } from "@/lib/ollama-model-options";
 import { getSettings, listOllamaModels, saveAIConfig } from "@/lib/api";
 import { OllamaModelStatus } from "./ollama-model-status";
 import { SectionShell, SettingCard } from "./section-shell";
@@ -82,33 +83,10 @@ function AIForm({ settings }: { settings: AppSettings }) {
     [fetchedOllamaModels]
   );
   const modelOptions = useMemo(() => {
-    const installedSet = new Set(installedModels);
-    const recommendedNames = new Set(
-      RECOMMENDED_OLLAMA_MODELS.map((model) => model.name)
-    );
-    return [
-      ...installedModels.map((name) => ({
-        name,
-        installed: true,
-        info: RECOMMENDED_OLLAMA_MODELS.find((model) => model.name === name),
-      })),
-      ...RECOMMENDED_OLLAMA_MODELS.filter(
-        (model) => !installedSet.has(model.name)
-      ).map((info) => ({
-        name: info.name,
-        installed: false,
-        info,
-      })),
-      ...(!installedSet.has(ollamaModel) && !recommendedNames.has(ollamaModel)
-        ? [
-            {
-              name: ollamaModel,
-              installed: false,
-              info: undefined,
-            },
-          ]
-        : []),
-    ];
+    return buildOllamaModelOptions({
+      installedModels,
+      selectedModel: ollamaModel,
+    });
   }, [installedModels, ollamaModel]);
 
   const mutation = useMutation({

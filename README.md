@@ -67,7 +67,7 @@ Transactions, settings, budgets, and sensitive settings live in local SQLite und
 <td valign="top">
 
 ### 📊 Budgets with pacing
-Hierarchical categories, monthly targets, pacing cards, and per-category drilldowns help you see where the month is going.
+Hierarchical categories, monthly targets, pacing cards, per-category drilldowns, and statistics-based budget review help you see where the month is going.
 
 </td>
 <td valign="top">
@@ -263,6 +263,20 @@ The dashboard import dialog supports multiple files at once.
 5. Click **Import**. New rows are inserted, duplicates are skipped by the composite dedup hash, and AI categorization runs if a provider is connected.
 
 Imported rows use provider IDs that match their template, such as `max_bill`, `isracard_bill`, `cal_bill`, `hapoalim_bank_account`, or `leumi_bank_account`. The transactions page can filter totals and rows by cards, bank accounts, income, expenses, and pending review.
+
+## Reviewing budget statistics
+
+After importing and categorizing transactions, open **Settings -> Categories** and click **Calculate statistics**. Spent opens a statistics review page instead of applying changes immediately.
+
+On that page you can:
+
+1. Choose how many complete months to include in the calculation.
+2. Compare each category's current budget with its mean and median spend.
+3. Pick current, mean, median, or type any custom monthly amount.
+4. Review the suggested monthly target.
+5. Click **Apply budgets** only when the chosen numbers look right.
+
+The statistics are calculated from transactions already stored in the local SQLite database. Saving writes only the numbers you selected.
 
 ## How you will use it
 

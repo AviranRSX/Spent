@@ -782,9 +782,29 @@ export interface BudgetSuggestionsResponse {
   totalBudgetSuggestion: TotalBudgetSuggestion | null;
 }
 
+export interface ApplyBudgetSuggestionsResponse {
+  success: boolean;
+  appliedCategoryCount: number;
+  monthlyTarget: number | null;
+}
+
 export function getBudgetSuggestions(months?: number) {
   const qs = months == null ? "" : `?months=${months}`;
   return fetchJSON<BudgetSuggestionsResponse>(`/api/budget-suggestions${qs}`);
+}
+
+export function applyBudgetSuggestions(input: {
+  categoryBudgets: Array<{ categoryId: number; amount: number }>;
+  monthlyTarget?: number | null;
+}) {
+  return fetchJSON<ApplyBudgetSuggestionsResponse>(
+    "/api/budget-suggestions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
 }
 
 // Placeholder for last sync info

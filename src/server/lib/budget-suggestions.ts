@@ -40,6 +40,16 @@ export interface BudgetSuggestionsResult {
   totalBudgetSuggestion: TotalBudgetSuggestion | null;
 }
 
+export interface BudgetSuggestionApplyPlan {
+  categoryBudgets: { categoryId: number; amount: number }[];
+  monthlyTarget: number | null;
+}
+
+export interface BudgetSuggestionApplySelection {
+  categoryBudgets: { categoryId: number; amount: number }[];
+  monthlyTarget?: number | null;
+}
+
 export const MIN_BUDGET_SUGGESTION_MONTHS = 3;
 
 export function getLastCompleteMonths(now: Date, count = 3): string[] {
@@ -147,6 +157,26 @@ export function buildBudgetSuggestions(input: {
     maxMonthCount,
     categorySuggestions,
     totalBudgetSuggestion,
+  };
+}
+
+export function buildBudgetSuggestionApplyPlanFromSelections(
+  selection: BudgetSuggestionApplySelection
+): BudgetSuggestionApplyPlan {
+  return {
+    categoryBudgets: selection.categoryBudgets.filter(
+      (row) =>
+        Number.isInteger(row.categoryId) &&
+        row.categoryId > 0 &&
+        Number.isFinite(row.amount) &&
+        row.amount >= 0
+    ),
+    monthlyTarget:
+      selection.monthlyTarget != null &&
+      Number.isFinite(selection.monthlyTarget) &&
+      selection.monthlyTarget > 0
+        ? selection.monthlyTarget
+        : null,
   };
 }
 

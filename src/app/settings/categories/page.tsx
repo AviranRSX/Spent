@@ -2,7 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Plus, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  Calculator,
+  ChevronRight,
+  Plus,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -170,6 +177,8 @@ export default function CategoriesSettingsPage() {
             ) : null}
           </div>
         )}
+
+        {activeKind === "expense" ? <BudgetSuggestionCard /> : null}
       </SectionShell>
 
       <CategoryDetailSheet
@@ -178,6 +187,35 @@ export default function CategoriesSettingsPage() {
         onClose={() => setOpenId(null)}
       />
     </>
+  );
+}
+
+function BudgetSuggestionCard() {
+  const router = useRouter();
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold">Budget recommendations</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Use completed transaction history already stored in this workspace.
+            </p>
+          </div>
+        </div>
+        <Button
+          onClick={() => router.push("/settings/categories/statistics")}
+          className="shrink-0 gap-1.5"
+        >
+          <Calculator className="h-3.5 w-3.5" />
+          Calculate statistics
+        </Button>
+      </div>
+    </div>
   );
 }
 

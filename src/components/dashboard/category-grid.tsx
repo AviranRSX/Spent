@@ -87,7 +87,7 @@ export function CategoryGrid({
   const activeCategories = useMemo(
     () =>
       categories.filter(
-        (c) => c.spent > 0 || (!c.isAutoBudget && c.budget > 0)
+        (c) => c.spent !== 0 || (!c.isAutoBudget && c.budget > 0)
       ),
     [categories]
   );

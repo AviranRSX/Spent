@@ -8,6 +8,7 @@ import { getAllCategories } from "@/server/db/queries/categories";
 import { getAllBudgets, getAutoBudgetAverage } from "@/server/db/queries/budgets";
 import { toLocalISODate } from "@/server/lib/date-utils";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
+import { mergeSignedTransferSeries } from "@/server/lib/summary-categories";
 import type { BudgetSource } from "@/lib/types";
 
 export async function GET(
@@ -49,17 +50,25 @@ export async function GET(
   if (!category) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
+  const filterKind = category.kind === "income" ? "income" : "expense";
 
   // Identify children if this category is a parent.
   const children = allCategories.filter((c) => c.parentId === categoryId);
   const isParent = children.length > 0;
+  const includesExpenseTransfers =
+    category.kind === "expense" &&
+    (category.name === "Transfers" ||
+      children.some((c) => c.kind === "expense" && c.name === "Transfers"));
+  const incomeTransferCategory = includesExpenseTransfers
+    ? allCategories.find((c) => c.kind === "income" && c.name === "Transfers")
+    : null;
 
   // For parents, aggregate across all child ids. For leaves, behave as before.
   const targetIds = isParent ? children.map((c) => c.id) : [categoryId];
 
   // Daily spend: sum per-day across the target ids.
   const perTargetDaily = targetIds.map((tid) =>
-    getCategorySpendByDay(workspaceId, tid, from, to)
+    getCategorySpendByDay(workspaceId, tid, from, to, filterKind)
   );
   const dailyMap = new Map<string, number>();
   for (const series of perTargetDaily) {
@@ -67,9 +76,21 @@ export async function GET(
       dailyMap.set(d.date, (dailyMap.get(d.date) ?? 0) + d.amount);
     }
   }
-  const dailySpend = Array.from(dailyMap.entries())
+  const expenseDailySpend = Array.from(dailyMap.entries())
     .map(([date, amount]) => ({ date, amount }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const incomeTransferDaily = incomeTransferCategory
+    ? getCategorySpendByDay(
+        workspaceId,
+        incomeTransferCategory.id,
+        from,
+        to,
+        "income"
+      )
+    : [];
+  const dailySpend = incomeTransferCategory
+    ? mergeSignedTransferSeries(expenseDailySpend, incomeTransferDaily)
+    : expenseDailySpend;
 
   const spent = dailySpend.reduce((sum, d) => sum + d.amount, 0);
 
@@ -141,18 +162,35 @@ export async function GET(
   }
 
   const prevPerTarget = targetIds.map((tid) =>
-    getCategorySpendByDay(workspaceId, tid, prevFrom, prevTo)
+    getCategorySpendByDay(workspaceId, tid, prevFrom, prevTo, filterKind)
   );
-  let prevSpent = 0;
+  const prevExpenseMap = new Map<string, number>();
   for (const series of prevPerTarget) {
-    for (const d of series) prevSpent += d.amount;
+    for (const d of series) {
+      prevExpenseMap.set(d.date, (prevExpenseMap.get(d.date) ?? 0) + d.amount);
+    }
   }
+  const prevExpenseSeries = Array.from(prevExpenseMap.entries()).map(
+    ([date, amount]) => ({ date, amount })
+  );
+  const prevIncomeTransferDaily = incomeTransferCategory
+    ? getCategorySpendByDay(
+        workspaceId,
+        incomeTransferCategory.id,
+        prevFrom,
+        prevTo,
+        "income"
+      )
+    : [];
+  const prevSpent = (
+    incomeTransferCategory
+      ? mergeSignedTransferSeries(prevExpenseSeries, prevIncomeTransferDaily)
+      : prevExpenseSeries
+  ).reduce((sum, d) => sum + d.amount, 0);
   const vsLastMonth =
     prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
 
-  const filterKind = category.kind === "income" ? "income" : "expense";
-
-  const { transactions, total: transactionCount } = queryTransactions(
+  const primaryResult = queryTransactions(
     workspaceId,
     {
       from,
@@ -164,6 +202,24 @@ export async function GET(
       limit: 50,
     }
   );
+  const incomeTransferResult = incomeTransferCategory
+    ? queryTransactions(workspaceId, {
+        from,
+        to,
+        category: incomeTransferCategory.id,
+        kind: "income",
+        sort: "date",
+        order: "desc",
+        limit: 50,
+      })
+    : { transactions: [], total: 0 };
+  const transactions = [
+    ...primaryResult.transactions,
+    ...incomeTransferResult.transactions,
+  ]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
+    .slice(0, 50);
+  const transactionCount = primaryResult.total + incomeTransferResult.total;
 
   const needsReviewTransactions = transactions.filter((t) => t.needsReview);
 
@@ -171,10 +227,17 @@ export async function GET(
   const topMerchants = isParent
     ? aggregateTopMerchants(
         children.map((c) =>
-          getTopMerchantsForCategory(workspaceId, c.id, from, to, 12)
+          getTopMerchantsForCategory(workspaceId, c.id, from, to, 12, filterKind)
         )
       )
-    : getTopMerchantsForCategory(workspaceId, categoryId, from, to, 6);
+    : getTopMerchantsForCategory(
+        workspaceId,
+        categoryId,
+        from,
+        to,
+        6,
+        filterKind
+      );
 
   const avgPerTransaction = transactionCount > 0 ? spent / transactionCount : 0;
 

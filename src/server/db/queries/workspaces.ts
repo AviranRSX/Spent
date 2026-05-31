@@ -48,7 +48,8 @@ export function countWorkspaces(): number {
 
 // Cumulative seed list reflecting migrations 001 + 006 (removed "Other")
 // + 008 (added "Salary", kind column) + 010 (brighter colors)
-// + 011 (added 7 more) + 014 (Sports & Hobbies + descriptions). Keep in sync.
+// + 011 (added 7 more) + 014 (Sports & Hobbies + descriptions)
+// + 023 (income Transfers). Keep in sync.
 interface SeedCategory {
   name: string;
   color: string;
@@ -79,6 +80,7 @@ const SEED_CATEGORIES: SeedCategory[] = [
   { name: "Kids & Childcare", color: "#E5D080", icon: "baby", kind: "expense", description: "Daycare, babysitters, after-school programs, kids' clothing/toys when clearly child-specific." },
   { name: "Sports & Hobbies", color: "#7BB36B", icon: "dumbbell", kind: "expense", description: "Gyms, sports clubs, fitness studios, shooting ranges (מטווח/מטווחי), martial arts, climbing walls, hobby shops, craft supplies, musical instrument lessons, sports gear. NOT general entertainment." },
   { name: "Salary", color: "#85B59A", icon: "briefcase", kind: "income", description: "Regular wage payments from employer (משכורת, שכר)." },
+  { name: "Transfers", color: "#A2AAC2", icon: "arrow-left-right", kind: "income", description: "Transfers between accounts and people where the net movement can be money received and money sent. Summaries use signed amounts so outgoing transfers reduce the category total." },
   { name: "Freelance & Side Income", color: "#C0D582", icon: "briefcase", kind: "income", description: "Invoices paid by clients, side-gig deposits, consulting fees." },
   { name: "Investment Income", color: "#7B85C9", icon: "trending-up", kind: "income", description: "Dividends, interest, stock sale proceeds, crypto sale proceeds." },
   { name: "Refunds & Reimbursements", color: "#7DC8B3", icon: "rotate-ccw", kind: "income", description: "Returns, expense reimbursements, insurance payouts, refunds from cancellations." },

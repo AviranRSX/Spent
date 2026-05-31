@@ -2,6 +2,7 @@ import "server-only";
 
 import { getDb } from "../index";
 import { computeDedupHash } from "../../lib/dedup";
+import { combineTransactionSummaryTotals } from "../../lib/transaction-summary";
 import { detectKind } from "../../lib/transfers";
 import type {
   TransactionWithCategory,
@@ -657,6 +658,11 @@ export interface UncategorizedSpend {
   count: number;
 }
 
+export interface CategorySignedIncome {
+  amount: number;
+  count: number;
+}
+
 export function getUncategorizedSpendInRange(
   workspaceId: number,
   from: string,
@@ -701,6 +707,64 @@ export function getUncategorizedNeedsReviewCount(
     "needs_review = 1",
   ];
   const values: (string | number)[] = [workspaceId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}`
+    )
+    .get(...values) as { count: number };
+  return row.count;
+}
+
+export function getIncomeCategorySignedSumInRange(
+  workspaceId: number,
+  categoryId: number,
+  from: string,
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
+): CategorySignedIncome {
+  const conditions = [
+    "workspace_id = ?",
+    "category_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'income'",
+  ];
+  const values: (string | number)[] = [workspaceId, categoryId, from, to];
+  const providers = providersForSourceType(params.sourceType);
+  if (providers) appendProviderListFilter(conditions, values, providers);
+  const row = getDb()
+    .prepare(
+      `SELECT COALESCE(SUM(charged_amount), 0) as amount,
+              COUNT(*) as count
+       FROM transactions
+       WHERE ${conditions.join(" AND ")}`
+    )
+    .get(...values) as CategorySignedIncome;
+  return row;
+}
+
+export function getIncomeNeedsReviewCountByCategory(
+  workspaceId: number,
+  categoryId: number,
+  from: string,
+  to: string,
+  params: { sourceType?: TransactionSourceType } = {}
+): number {
+  const conditions = [
+    "workspace_id = ?",
+    "category_id = ?",
+    "date >= ?",
+    "date <= ?",
+    "status = 'completed'",
+    "kind = 'income'",
+    "needs_review = 1",
+  ];
+  const values: (string | number)[] = [workspaceId, categoryId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
   const row = getDb()
@@ -790,28 +854,31 @@ export function getCategorySpendByDay(
   workspaceId: number,
   categoryId: number,
   from: string,
-  to: string
+  to: string,
+  kind: "expense" | "income" = "expense"
 ): DailySpendPoint[] {
+  const amountExpr =
+    kind === "income" ? "t.charged_amount" : "ABS(t.charged_amount)";
   return getDb()
     .prepare(
       `WITH RECURSIVE days(d) AS (
          SELECT date(?)
          UNION ALL
          SELECT date(d, '+1 day') FROM days WHERE d < date(?)
-       )
-       SELECT days.d as date,
-              COALESCE(SUM(ABS(t.charged_amount)), 0) as amount
-       FROM days
-       LEFT JOIN transactions t
-         ON substr(t.date, 1, 10) = days.d
-         AND t.workspace_id = ?
-         AND t.category_id = ?
-         AND t.kind = 'expense'
-         AND t.status = 'completed'
-       GROUP BY days.d
-       ORDER BY days.d ASC`
+        )
+        SELECT days.d as date,
+               COALESCE(SUM(${amountExpr}), 0) as amount
+        FROM days
+        LEFT JOIN transactions t
+          ON substr(t.date, 1, 10) = days.d
+          AND t.workspace_id = ?
+          AND t.category_id = ?
+          AND t.kind = ?
+          AND t.status = 'completed'
+        GROUP BY days.d
+        ORDER BY days.d ASC`
     )
-    .all(from, to, workspaceId, categoryId) as DailySpendPoint[];
+    .all(from, to, workspaceId, categoryId, kind) as DailySpendPoint[];
 }
 
 export interface TopMerchantForCategory {
@@ -825,23 +892,25 @@ export function getTopMerchantsForCategory(
   categoryId: number,
   from: string,
   to: string,
-  limit = 8
+  limit = 8,
+  kind: "expense" | "income" = "expense"
 ): TopMerchantForCategory[] {
+  const amountExpr = kind === "income" ? "charged_amount" : "ABS(charged_amount)";
   return getDb()
     .prepare(
       `SELECT description as merchant,
-              SUM(ABS(charged_amount)) as amount,
+              SUM(${amountExpr}) as amount,
               COUNT(*) as count
        FROM transactions
        WHERE workspace_id = ? AND category_id = ?
-         AND date >= ? AND date <= ?
-         AND status = 'completed'
-         AND kind = 'expense'
+          AND date >= ? AND date <= ?
+          AND status = 'completed'
+          AND kind = ?
        GROUP BY description
-       ORDER BY amount DESC
+        ORDER BY ABS(amount) DESC
        LIMIT ?`
     )
-    .all(workspaceId, categoryId, from, to, limit) as TopMerchantForCategory[];
+    .all(workspaceId, categoryId, from, to, kind, limit) as TopMerchantForCategory[];
 }
 
 export function getPeriodTotal(
@@ -1120,6 +1189,14 @@ export function getTransactionsSummary(
     )
     .get(...baseValues) as { total: number; count: number };
 
+  const transferExpenseAgg = db
+    .prepare(
+      `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total, COUNT(*) as count
+       FROM transactions
+       WHERE ${baseWhere} AND kind = 'transfer'`
+    )
+    .get(...baseValues) as { total: number; count: number };
+
   const pickLargest = (sign: "income" | "expense"): TransactionWithCategory | null => {
     const tConditions = [
       "t.workspace_id = ?",
@@ -1165,18 +1242,24 @@ export function getTransactionsSummary(
     )
     .get(...baseValues) as { count: number };
 
+  const totals = combineTransactionSummaryTotals({
+    income: incomeAgg,
+    expense: expenseAgg,
+    expenseTransfers: transferExpenseAgg,
+  });
+
   return {
     income: {
-      total: incomeAgg.total,
-      count: incomeAgg.count,
+      total: totals.income.total,
+      count: totals.income.count,
       largest: pickLargest("income"),
     },
     expense: {
-      total: expenseAgg.total,
-      count: expenseAgg.count,
+      total: totals.expense.total,
+      count: totals.expense.count,
       largest: pickLargest("expense"),
     },
-    net: incomeAgg.total - expenseAgg.total,
+    net: totals.net,
     topMerchants: topMerchantsRows,
     pendingReviewCount: pendingReview.count,
   };

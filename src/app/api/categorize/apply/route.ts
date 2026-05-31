@@ -80,30 +80,40 @@ export async function POST(request: Request) {
   }
 
   for (const a of body.assignments) {
+    const assignmentKind = a.kind ?? "expense";
+    const categoryKey = `${assignmentKind}::${a.categoryName.toLowerCase()}`;
     if (a.isNew) {
       const isApproved = approved.has(a.categoryName.toLowerCase());
       if (isApproved) {
-        const cached = newCategoryCache.get(a.categoryName.toLowerCase());
+        const cached = newCategoryCache.get(categoryKey);
         if (cached != null) {
           pushUpdate(a.transactionId, cached, a.aiConfidence);
         } else {
           // Check if it already exists before creating
-          const wasExisting = getCategoryByName(workspaceId, a.categoryName);
+          const wasExisting = getCategoryByName(
+            workspaceId,
+            a.categoryName,
+            assignmentKind
+          );
           const cat = ensureCategory(
             workspaceId,
             a.categoryName,
             undefined,
-            a.kind ?? "expense"
+            assignmentKind
           );
           if (!wasExisting) createdCount++;
-          newCategoryCache.set(a.categoryName.toLowerCase(), cat.id);
+          newCategoryCache.set(categoryKey, cat.id);
           pushUpdate(a.transactionId, cat.id, a.aiConfidence);
         }
       } else {
         // Rejected. Try a fallback if user set one.
         const fallbackName = fallbacks[a.categoryName];
         if (fallbackName) {
-          const fallbackCat = getCategoryByName(workspaceId, fallbackName);
+          const fallbackCat = getCategoryByName(
+            workspaceId,
+            fallbackName,
+            assignmentKind
+          );
           if (fallbackCat && !parentIds.has(fallbackCat.id)) {
             pushUpdate(a.transactionId, fallbackCat.id, a.aiConfidence);
           } else {
@@ -115,7 +125,11 @@ export async function POST(request: Request) {
       }
     } else {
       // Existing category
-      const cat = getCategoryByName(workspaceId, a.categoryName);
+      const cat = getCategoryByName(
+        workspaceId,
+        a.categoryName,
+        assignmentKind
+      );
       if (cat && !parentIds.has(cat.id)) {
         pushUpdate(a.transactionId, cat.id, a.aiConfidence);
       } else {

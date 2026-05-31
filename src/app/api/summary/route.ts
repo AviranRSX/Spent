@@ -11,6 +11,8 @@ import {
   getNeedsReviewCountByCategory,
   getUncategorizedNeedsReviewCount,
   getUncategorizedSpendInRange,
+  getIncomeCategorySignedSumInRange,
+  getIncomeNeedsReviewCountByCategory,
 } from "@/server/db/queries/transactions";
 import { getAllCategories } from "@/server/db/queries/categories";
 import {
@@ -28,7 +30,10 @@ import {
   pacePhrase,
 } from "@/server/lib/pace";
 import { toLocalISODate } from "@/server/lib/date-utils";
-import { buildUncategorizedCategoryRow } from "@/server/lib/summary-categories";
+import {
+  buildUncategorizedCategoryRow,
+  mergeTransferIncomeIntoExpenseRows,
+} from "@/server/lib/summary-categories";
 import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import type { BudgetSource, CategoryWithData } from "@/lib/types";
 
@@ -79,6 +84,9 @@ export async function GET(request: Request) {
   const prevTo = toLocalISODate(prevMonthEnd);
 
   const categories = getAllCategories(workspaceId, "expense");
+  const incomeTransfers = getAllCategories(workspaceId, "income").find(
+    (c) => c.name === "Transfers"
+  );
   const currentSpend = getCategorySpendInRange(workspaceId, from, to, sourceParams);
   const prevSpend = getCategorySpendInRange(
     workspaceId,
@@ -123,6 +131,33 @@ export async function GET(request: Request) {
     to,
     sourceParams
   );
+  const currentIncomeTransfers = incomeTransfers
+    ? getIncomeCategorySignedSumInRange(
+        workspaceId,
+        incomeTransfers.id,
+        from,
+        to,
+        sourceParams
+      )
+    : { amount: 0, count: 0 };
+  const prevIncomeTransfers = incomeTransfers
+    ? getIncomeCategorySignedSumInRange(
+        workspaceId,
+        incomeTransfers.id,
+        prevFrom,
+        prevTo,
+        sourceParams
+      )
+    : { amount: 0, count: 0 };
+  const incomeTransferNeedsReviewCount = incomeTransfers
+    ? getIncomeNeedsReviewCountByCategory(
+        workspaceId,
+        incomeTransfers.id,
+        from,
+        to,
+        sourceParams
+      )
+    : 0;
   const needsReviewMap = new Map(
     needsReviewCounts.map((r) => [r.categoryId, r.count])
   );
@@ -135,6 +170,7 @@ export async function GET(request: Request) {
   const budgetMap = new Map(
     explicitBudgets.map((b) => [b.categoryId, b])
   );
+  const expenseTransfers = categories.find((category) => category.name === "Transfers");
 
   // Identify parents (any category that is referenced as parent_id by at
   // least one other category). Parents get synthetic rollup rows.
@@ -335,9 +371,40 @@ export async function GET(request: Request) {
         ]
       : [];
 
+  const transferIncomeAdjustment = {
+    amount: currentIncomeTransfers.amount,
+    count: currentIncomeTransfers.count,
+    needsReviewCount: incomeTransferNeedsReviewCount,
+    previousAmount: prevIncomeTransfers.amount,
+  };
+  const previousExpenseTransfers =
+    expenseTransfers != null ? prevMap.get(expenseTransfers.id) ?? 0 : 0;
+  const previousExpenseTransferParent =
+    expenseTransfers?.parentId != null
+      ? (childrenByParent.get(expenseTransfers.parentId) ?? []).reduce(
+          (sum, child) => sum + (prevMap.get(child.id) ?? 0),
+          0
+        )
+      : undefined;
+  const transferMergeOptions = {
+    transferCategoryId: expenseTransfers?.id,
+    transferParentId: expenseTransfers?.parentId,
+    previousExpenseParent: previousExpenseTransferParent,
+  };
+
   const categoriesWithData: CategoryWithData[] = [
-    ...parentRows,
-    ...leafRows,
+    ...mergeTransferIncomeIntoExpenseRows(
+      parentRows,
+      transferIncomeAdjustment,
+      previousExpenseTransfers,
+      transferMergeOptions
+    ),
+    ...mergeTransferIncomeIntoExpenseRows(
+      leafRows,
+      transferIncomeAdjustment,
+      previousExpenseTransfers,
+      transferMergeOptions
+    ),
     ...uncategorizedRows,
   ];
 

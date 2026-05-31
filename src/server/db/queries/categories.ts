@@ -44,14 +44,17 @@ export function getCategoryById(
 
 export function getCategoryByName(
   workspaceId: number,
-  name: string
+  name: string,
+  kind?: CategoryKind
 ): Category | null {
+  const kindFilter = kind ? " AND kind = ?" : "";
+  const params = kind ? [workspaceId, name, kind] : [workspaceId, name];
   return (
     (getDb()
       .prepare(
-        `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE workspace_id = ? AND name = ? COLLATE NOCASE`
+        `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE workspace_id = ? AND name = ? COLLATE NOCASE${kindFilter}`
       )
-      .get(workspaceId, name) as Category | undefined) ?? null
+      .get(...params) as Category | undefined) ?? null
   );
 }
 
@@ -320,13 +323,13 @@ export function ensureCategory(
   kind: CategoryKind = "expense"
 ): Category {
   const trimmed = name.trim();
-  const existing = getCategoryByName(workspaceId, trimmed);
+  const existing = getCategoryByName(workspaceId, trimmed, kind);
   if (existing) return existing;
 
   const parentName = SEEDED_CATEGORY_PARENTS[trimmed];
   let parentId: number | null = null;
-  if (parentName) {
-    const parent = getCategoryByName(workspaceId, parentName);
+  if (parentName && kind === "expense") {
+    const parent = getCategoryByName(workspaceId, parentName, "expense");
     if (parent && parent.parentId === null) parentId = parent.id;
   }
 

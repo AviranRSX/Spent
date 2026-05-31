@@ -47,7 +47,7 @@ The trade-off is honest: you self-host, keep the database on your machine, and c
 <td width="33%" valign="top">
 
 ### 📄 XLSX imports
-Load local XLSX files from Max, Isracard, and Hapoalim templates. Files are parsed in memory, previewed, deduplicated, and then committed.
+Load local XLSX files from Max, Isracard, CAL, Hapoalim, and Leumi templates. Files are parsed in memory, previewed, deduplicated, and then committed.
 
 </td>
 <td width="33%" valign="top">
@@ -87,7 +87,7 @@ Native companion in the macOS menu bar or Windows notification area. Open the da
 <td valign="top">
 
 ### 🎯 Transfers and income
-Bank imports classify positive bank rows as income and detect common Israeli credit-card payment descriptions as transfers.
+Income and expense categories are tracked separately, with Transfers available on both sides so repayments and account movements net correctly in summaries.
 
 </td>
 <td valign="top">
@@ -264,6 +264,8 @@ The dashboard import dialog supports multiple files at once.
 
 Imported rows use provider IDs that match their template, such as `max_bill`, `isracard_bill`, `cal_bill`, `hapoalim_bank_account`, or `leumi_bank_account`. The transactions page can filter totals and rows by cards, bank accounts, income, expenses, and pending review.
 
+Positive bank-account rows are treated as income. Common transfer-like movements, including credit-card payments and account transfers, can be categorized as Transfers. Expense-side transfer totals include outgoing transfers, while income-side Transfers subtract from those totals so moving money between accounts does not inflate spending.
+
 ## Reviewing budget statistics
 
 After importing and categorizing transactions, open **Settings -> Categories** and click **Calculate statistics**. Spent opens a statistics review page instead of applying changes immediately.
@@ -276,7 +278,7 @@ On that page you can:
 4. Review the suggested monthly target.
 5. Click **Apply budgets** only when the chosen numbers look right.
 
-The statistics are calculated from transactions already stored in the local SQLite database. Saving writes only the numbers you selected.
+The statistics are calculated from transactions already stored in the local SQLite database. Transfer statistics use the same signed treatment as the dashboard, so incoming transfer rows reduce the transfer total instead of appearing as ordinary income. Saving writes only the numbers you selected.
 
 ## How you will use it
 
@@ -398,7 +400,7 @@ fetch("/api/setup/ai", {
 });
 ```
 
-Focused checks added with the XLSX import work:
+Focused checks for imports and dashboard logic:
 
 ```bash
 npm run test:imports
@@ -421,8 +423,9 @@ To reset state, delete `data/spent.db*` and `data/.encryption-key`.
 ## Roadmap
 
 - [x] Hebrew UI with full RTL layout
-- [x] Local XLSX imports for Max, Isracard, and Hapoalim formats
+- [x] Local XLSX imports for Max, Isracard, CAL, Hapoalim, and Leumi formats
 - [x] Card and bank source filters on the transactions page
+- [x] Signed income and transfer summaries
 - [ ] More import templates
 - [ ] CSV / OFX export
 - [ ] Custom user-defined categories

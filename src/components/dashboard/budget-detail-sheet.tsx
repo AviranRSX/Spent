@@ -141,9 +141,9 @@ function DetailSkeleton() {
 
 function DetailContent({ data }: { data: CategoryDetail }) {
   const queryClient = useQueryClient();
-  const sameKindCategoriesQuery = useQuery({
-    queryKey: ["categories", data.category.kind],
-    queryFn: () => getCategories(data.category.kind),
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: () => getCategories(),
   });
 
   const invalidate = () => {
@@ -177,8 +177,14 @@ function DetailContent({ data }: { data: CategoryDetail }) {
 
   const Icon = ICON_MAP[data.category.icon ?? "circle-dot"] ?? CircleDot;
   const iconColor = shade(data.category.color);
-  const pct = Math.min(100, Math.round(data.percentSpent));
+  const pct = Math.min(100, Math.max(0, Math.round(data.percentSpent)));
   const isTracking = data.category.budgetMode === "tracking";
+  const isMixedTransferDetail =
+    data.category.kind === "expense" &&
+    data.transactions.some(
+      (transaction) =>
+        transaction.kind === "income" && transaction.categoryName === "Transfers"
+    );
 
   const chartData = useMemo(
     () =>
@@ -274,7 +280,7 @@ function DetailContent({ data }: { data: CategoryDetail }) {
       <div className="space-y-5 p-6 pt-3">
         {data.category.isParent && data.children && data.children.length > 0 && (
           <ChildrenBreakdownSection
-            children={data.children}
+            items={data.children}
             budgetSource={data.budgetSource}
             color={data.category.color}
           />
@@ -282,10 +288,11 @@ function DetailContent({ data }: { data: CategoryDetail }) {
         {data.needsReviewCount > 0 && (
           <NeedsReviewSection
             transactions={data.needsReviewTransactions}
-            categories={sameKindCategoriesQuery.data ?? []}
+            categories={categoriesQuery.data ?? []}
             onApprove={handleApprove}
             onChange={handleChangeCategory}
             color={data.category.color}
+            invertIncomeTransfers={isMixedTransferDetail}
           />
         )}
 
@@ -403,50 +410,62 @@ function DetailContent({ data }: { data: CategoryDetail }) {
               </div>
             ) : (
               <ul className="divide-y">
-                {data.transactions.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center justify-between gap-3 px-4 py-2.5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="break-words text-sm font-medium">
-                        {t.description}
+                {data.transactions.map((t) => {
+                  const displayAmount =
+                    isMixedTransferDetail && t.kind === "income"
+                      ? -t.chargedAmount
+                      : t.chargedAmount;
+                  return (
+                    <li
+                      key={t.id}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="break-words text-sm font-medium">
+                          {t.description}
+                        </div>
+                        <div className="text-xs text-muted-foreground tabular-nums">
+                          {formatDate(t.date)}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground tabular-nums">
-                        {formatDate(t.date)}
-                      </div>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent">
-                        <Badge
-                          variant="outline"
-                          className="border-none p-0"
-                          style={{ color: t.categoryColor ?? undefined }}
-                        >
-                          {t.categoryName ?? "Uncategorized"}
-                        </Badge>
-                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {(sameKindCategoriesQuery.data ?? []).map((cat) => (
-                          <DropdownMenuItem
-                            key={cat.id}
-                            onClick={() => handleChangeCategory(t.id, cat.id)}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger className="inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent">
+                          <Badge
+                            variant="outline"
+                            className="border-none p-0"
+                            style={{ color: t.categoryColor ?? undefined }}
                           >
-                            <div
-                              className="me-2 h-2 w-2 rounded-full"
-                              style={{ backgroundColor: cat.color }}
-                            />
-                            {cat.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <div className="shrink-0 text-sm font-medium tabular-nums">
-                      {formatCurrency(t.chargedAmount)}
-                    </div>
-                  </li>
-                ))}
+                            {t.categoryName ?? "Uncategorized"}
+                          </Badge>
+                          <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {(categoriesQuery.data ?? [])
+                            .filter(
+                              (cat) =>
+                                cat.kind ===
+                                (t.kind === "income" ? "income" : "expense")
+                            )
+                            .map((cat) => (
+                              <DropdownMenuItem
+                                key={cat.id}
+                                onClick={() => handleChangeCategory(t.id, cat.id)}
+                              >
+                                <div
+                                  className="me-2 h-2 w-2 rounded-full"
+                                  style={{ backgroundColor: cat.color }}
+                                />
+                                {cat.name}
+                              </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <div className="shrink-0 text-sm font-medium tabular-nums">
+                        {formatCurrency(displayAmount)}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -457,11 +476,11 @@ function DetailContent({ data }: { data: CategoryDetail }) {
 }
 
 function ChildrenBreakdownSection({
-  children,
+  items,
   budgetSource,
   color,
 }: {
-  children: CategoryChildBreakdown[];
+  items: CategoryChildBreakdown[];
   budgetSource: "own" | "rollup" | "leaf";
   color: string;
 }) {
@@ -476,7 +495,7 @@ function ChildrenBreakdownSection({
     >
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-medium">
-          Sub-categories · {children.length}
+          Sub-categories · {items.length}
         </h3>
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
           {budgetSource === "own" ? "Own budget" : "Rolled up"}
@@ -484,8 +503,8 @@ function ChildrenBreakdownSection({
       </div>
       <p className="text-xs text-muted-foreground">{banner}</p>
       <ul className="space-y-1.5">
-        {children.map((c) => {
-          const pct = Math.min(100, Math.round(c.percentSpent));
+        {items.map((c) => {
+          const pct = Math.min(100, Math.max(0, Math.round(c.percentSpent)));
           return (
             <li
               key={c.id}
@@ -535,12 +554,14 @@ function NeedsReviewSection({
   onApprove,
   onChange,
   color,
+  invertIncomeTransfers,
 }: {
   transactions: TransactionWithCategory[];
   categories: Category[];
   onApprove: (id: number) => void;
   onChange: (id: number, categoryId: number) => void;
   color: string;
+  invertIncomeTransfers: boolean;
 }) {
   return (
     <div
@@ -561,19 +582,24 @@ function NeedsReviewSection({
         category. Either way, the choice is remembered for next time.
       </p>
       <ul className="mt-2 space-y-2">
-        {transactions.map((t) => (
-          <li
-            key={t.id}
-            className="flex items-center justify-between gap-3 rounded-xl bg-background/70 p-3"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="break-words text-sm font-medium">
-                {t.description}
+        {transactions.map((t) => {
+          const displayAmount =
+            invertIncomeTransfers && t.kind === "income"
+              ? -t.chargedAmount
+              : t.chargedAmount;
+          return (
+            <li
+              key={t.id}
+              className="flex items-center justify-between gap-3 rounded-xl bg-background/70 p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="break-words text-sm font-medium">
+                  {t.description}
+                </div>
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  {formatDate(t.date)} · {formatCurrency(displayAmount)}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {formatDate(t.date)} · {formatCurrency(t.chargedAmount)}
-              </div>
-            </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -591,18 +617,23 @@ function NeedsReviewSection({
                   <ChevronDown className="h-3 w-3 text-muted-foreground" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {categories.map((cat) => (
-                    <DropdownMenuItem
-                      key={cat.id}
-                      onClick={() => onChange(t.id, cat.id)}
-                    >
-                      <div
-                        className="me-2 h-2 w-2 rounded-full"
-                        style={{ backgroundColor: cat.color }}
-                      />
-                      {cat.name}
-                    </DropdownMenuItem>
-                  ))}
+                  {categories
+                    .filter(
+                      (cat) =>
+                        cat.kind === (t.kind === "income" ? "income" : "expense")
+                    )
+                    .map((cat) => (
+                      <DropdownMenuItem
+                        key={cat.id}
+                        onClick={() => onChange(t.id, cat.id)}
+                      >
+                        <div
+                          className="me-2 h-2 w-2 rounded-full"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        {cat.name}
+                      </DropdownMenuItem>
+                    ))}
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button
@@ -615,7 +646,8 @@ function NeedsReviewSection({
               </Button>
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );

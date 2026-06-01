@@ -30,3 +30,22 @@ export function combineTransactionSummaryTotals({
     net: income.total - totalExpense,
   };
 }
+
+export function combineTransactionPageSummaryTotals({
+  income,
+  expense,
+}: {
+  income: SummaryTotals;
+  expense: SummaryTotals;
+  transfers?: SummaryTotals;
+}): {
+  income: SummaryTotals;
+  expense: SummaryTotals;
+  net: number;
+} {
+  return {
+    income,
+    expense,
+    net: income.total - expense.total,
+  };
+}

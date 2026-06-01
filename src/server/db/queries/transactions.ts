@@ -2,7 +2,7 @@ import "server-only";
 
 import { getDb } from "../index";
 import { computeDedupHash } from "../../lib/dedup";
-import { combineTransactionSummaryTotals } from "../../lib/transaction-summary";
+import { combineTransactionPageSummaryTotals } from "../../lib/transaction-summary";
 import { detectKind } from "../../lib/transfers";
 import type {
   TransactionWithCategory,
@@ -196,6 +196,18 @@ function appendProviderListFilter(
   for (const provider of providers) values.push(provider);
 }
 
+function appendTransferCategoryExclusion(
+  conditions: string[],
+  columnPrefix = ""
+): void {
+  conditions.push(`NOT EXISTS (
+    SELECT 1 FROM categories transfer_category
+    WHERE transfer_category.id = ${columnPrefix}category_id
+      AND transfer_category.workspace_id = ${columnPrefix}workspace_id
+      AND transfer_category.name = 'Transfers'
+  )`);
+}
+
 function appendAccountNumbersFilter(
   conditions: string[],
   values: (string | number)[],
@@ -222,6 +234,11 @@ function providersForSourceType(
   if (sourceType === "bank") return BANK_TRANSACTION_PROVIDERS;
   if (sourceType === "card") return CARD_TRANSACTION_PROVIDERS;
   return null;
+}
+
+interface SpendingMetricParams {
+  sourceType?: TransactionSourceType;
+  excludeTransfers?: boolean;
 }
 
 function resolveSortSql(sort: string | undefined): string {
@@ -433,7 +450,7 @@ export function batchUpdateCategories(
 export function getMonthlySummary(
   workspaceId: number,
   months: number,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): MonthlySummary[] {
   const conditions = [
     "workspace_id = ?",
@@ -444,6 +461,7 @@ export function getMonthlySummary(
   const values: (string | number)[] = [workspaceId, months];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   return getDb()
     .prepare(
       `SELECT strftime('%Y-%m', date) as month,
@@ -461,7 +479,7 @@ export function getTopMerchants(
   from: string,
   to: string,
   limit = 10,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): MerchantSummary[] {
   const conditions = [
     "workspace_id = ?",
@@ -473,6 +491,7 @@ export function getTopMerchants(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   return getDb()
     .prepare(
       `SELECT description as name,
@@ -491,7 +510,7 @@ export function getCategoryBreakdown(
   workspaceId: number,
   from: string,
   to: string,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): CategoryBreakdown[] {
   const conditions = [
     "t.workspace_id = ?",
@@ -503,6 +522,7 @@ export function getCategoryBreakdown(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers, "t.");
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions, "t.");
   return getDb()
     .prepare(
       `SELECT
@@ -530,7 +550,7 @@ export function getCategorySpendInRange(
   workspaceId: number,
   from: string,
   to: string,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): CategorySpend[] {
   const conditions = [
     "workspace_id = ?",
@@ -543,6 +563,7 @@ export function getCategorySpendInRange(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   return getDb()
     .prepare(
       `SELECT category_id as categoryId,
@@ -817,7 +838,7 @@ export function getTopMerchantPerCategory(
   workspaceId: number,
   from: string,
   to: string,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): CategoryTopMerchant[] {
   const conditions = [
     "workspace_id = ?",
@@ -830,6 +851,7 @@ export function getTopMerchantPerCategory(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   return getDb()
     .prepare(
       `SELECT category_id as categoryId, description as merchant, amount
@@ -917,7 +939,7 @@ export function getPeriodTotal(
   workspaceId: number,
   from: string,
   to: string,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): number {
   const conditions = [
     "workspace_id = ?",
@@ -929,6 +951,7 @@ export function getPeriodTotal(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   const row = getDb()
     .prepare(
       `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total
@@ -943,7 +966,7 @@ export function getPeriodCount(
   workspaceId: number,
   from: string,
   to: string,
-  params: { sourceType?: TransactionSourceType } = {}
+  params: SpendingMetricParams = {}
 ): number {
   const conditions = [
     "workspace_id = ?",
@@ -955,6 +978,7 @@ export function getPeriodCount(
   const values: (string | number)[] = [workspaceId, from, to];
   const providers = providersForSourceType(params.sourceType);
   if (providers) appendProviderListFilter(conditions, values, providers);
+  if (params.excludeTransfers) appendTransferCategoryExclusion(conditions);
   const row = getDb()
     .prepare(
       `SELECT COUNT(*) as count
@@ -1172,12 +1196,18 @@ export function getTransactionsSummary(
         : undefined;
   appendCredentialIdsFilter(baseConditions, baseValues, summaryCredentialIds);
   const baseWhere = baseConditions.join(" AND ");
+  const moneyMetricWhere = `${baseWhere} AND NOT EXISTS (
+    SELECT 1 FROM categories c
+    WHERE c.id = transactions.category_id
+      AND c.workspace_id = transactions.workspace_id
+      AND c.name = 'Transfers'
+  )`;
 
   const incomeAgg = db
     .prepare(
       `SELECT COALESCE(SUM(charged_amount), 0) as total, COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND kind = 'income'`
+       WHERE ${moneyMetricWhere} AND kind = 'income'`
     )
     .get(...baseValues) as { total: number; count: number };
 
@@ -1185,15 +1215,7 @@ export function getTransactionsSummary(
     .prepare(
       `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total, COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND kind = 'expense'`
-    )
-    .get(...baseValues) as { total: number; count: number };
-
-  const transferExpenseAgg = db
-    .prepare(
-      `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total, COUNT(*) as count
-       FROM transactions
-       WHERE ${baseWhere} AND kind = 'transfer'`
+       WHERE ${moneyMetricWhere} AND kind = 'expense'`
     )
     .get(...baseValues) as { total: number; count: number };
 
@@ -1204,6 +1226,12 @@ export function getTransactionsSummary(
       "t.date <= ?",
       "t.status = 'completed'",
       "t.kind = ?",
+      `NOT EXISTS (
+        SELECT 1 FROM categories c
+        WHERE c.id = t.category_id
+          AND c.workspace_id = t.workspace_id
+          AND c.name = 'Transfers'
+      )`,
     ];
     const tValues: (string | number)[] = [workspaceId, from, to, sign];
     if (sourceProviders) {
@@ -1227,7 +1255,7 @@ export function getTransactionsSummary(
               SUM(ABS(charged_amount)) as total,
               COUNT(*) as count
        FROM transactions
-       WHERE ${baseWhere} AND kind = 'expense'
+       WHERE ${moneyMetricWhere} AND kind = 'expense'
        GROUP BY description
        ORDER BY total DESC
        LIMIT 5`
@@ -1242,10 +1270,9 @@ export function getTransactionsSummary(
     )
     .get(...baseValues) as { count: number };
 
-  const totals = combineTransactionSummaryTotals({
+  const totals = combineTransactionPageSummaryTotals({
     income: incomeAgg,
     expense: expenseAgg,
-    expenseTransfers: transferExpenseAgg,
   });
 
   return {

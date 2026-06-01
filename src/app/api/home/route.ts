@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  getPeriodTotal,
-  getTopMerchants,
-} from "@/server/db/queries/transactions";
+import { getPeriodTotal } from "@/server/db/queries/transactions";
 import {
   getBankHealth,
   getCashFlow,
@@ -10,6 +7,7 @@ import {
   getHistoricalTrend,
   getNeedsAttentionCounts,
   getRecentTransactionsForHome,
+  getSpendingStats,
 } from "@/server/db/queries/home";
 import { getWorkspaceSetting } from "@/server/db/queries/settings";
 import { getNextRunAt } from "@/server/sync/scheduler";
@@ -32,13 +30,12 @@ import type {
   HomeRecentTransaction,
   HomeSection,
   HomeSectionError,
+  HomeSpendingStats,
   HomeThisMonth,
-  HomeTopMerchant,
 } from "@/lib/types";
 
-const HISTORICAL_MONTHS = 8;
+const HISTORICAL_MONTHS = 6;
 const RECENT_TXN_LIMIT = 8;
-const TOP_MERCHANT_LIMIT = 6;
 const CATEGORY_SNAPSHOT_LIMIT = 6;
 
 function safe<T>(
@@ -81,7 +78,9 @@ export async function GET(request: Request) {
   const errors: HomeSectionError[] = [];
 
   const thisMonth = safe<HomeThisMonth>("thisMonth", errors, () => {
-    const spent = getPeriodTotal(workspaceId, from, to);
+    const spent = getPeriodTotal(workspaceId, from, to, {
+      excludeTransfers: true,
+    });
     const monthlyTargetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
     const parsed = monthlyTargetRaw != null ? Number(monthlyTargetRaw) : NaN;
     const budget = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
@@ -100,7 +99,8 @@ export async function GET(request: Request) {
     const prevSpent = getPeriodTotal(
       workspaceId,
       toLocalISODate(prevMonthStart),
-      toLocalISODate(prevMonthMtdEnd)
+      toLocalISODate(prevMonthMtdEnd),
+      { excludeTransfers: true }
     );
     const deltaVsLastMonth =
       prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
@@ -140,14 +140,9 @@ export async function GET(request: Request) {
     () => getRecentTransactionsForHome(workspaceId, RECENT_TXN_LIMIT)
   );
 
-  const topMerchants = safe<HomeTopMerchant[]>("topMerchants", errors, () => {
-    const rows = getTopMerchants(workspaceId, from, to, TOP_MERCHANT_LIMIT);
-    return rows.map((m) => ({
-      name: m.name,
-      total: m.amount,
-      count: m.count,
-    }));
-  });
+  const spendingStats = safe<HomeSpendingStats>("spendingStats", errors, () =>
+    getSpendingStats(workspaceId, to, HISTORICAL_MONTHS)
+  );
 
   const needsAttention = safe<HomeNeedsAttention>(
     "needsAttention",
@@ -165,7 +160,7 @@ export async function GET(request: Request) {
     categorySnapshot,
     historicalTrend,
     recentTransactions,
-    topMerchants,
+    spendingStats,
     needsAttention,
     bankHealth,
     nextScheduledSync: getNextRunAt(),

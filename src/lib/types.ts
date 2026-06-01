@@ -154,7 +154,7 @@ export type HomeSection =
   | "categorySnapshot"
   | "historicalTrend"
   | "recentTransactions"
-  | "topMerchants"
+  | "spendingStats"
   | "needsAttention"
   | "bankHealth";
 
@@ -186,8 +186,44 @@ export interface HomeCategorySnapshotItem {
 export interface HomeHistoricalTrendPoint {
   month: string;
   label: string;
-  total: number;
+  income: number;
+  expenses: number;
+  net: number;
   isCurrent: boolean;
+}
+
+export interface HomeCategoryMean {
+  categoryId: number;
+  name: string;
+  color: string;
+  monthlyMean: number;
+}
+
+export interface HomeCashFlowAverages {
+  meanIncome: number;
+  meanExpense: number;
+  meanNet: number;
+}
+
+export interface HomeMonthlyCashFlowStat {
+  month: string;
+  income: number;
+  expenses: number;
+}
+
+export interface HomeCategoryMonthlySpend {
+  month: string;
+  categoryId: number;
+  name: string;
+  color: string;
+  amount: number;
+}
+
+export interface HomeSpendingStats {
+  availableMonths: number;
+  defaultMonths: number;
+  monthlyCashFlow: HomeMonthlyCashFlowStat[];
+  categoryMonthlySpend: HomeCategoryMonthlySpend[];
 }
 
 export interface HomeRecentTransaction {
@@ -199,12 +235,6 @@ export interface HomeRecentTransaction {
   kind: "expense" | "income" | "transfer";
   categoryName: string | null;
   categoryColor: string | null;
-}
-
-export interface HomeTopMerchant {
-  name: string;
-  total: number;
-  count: number;
 }
 
 export interface HomeNeedsAttention {
@@ -232,7 +262,7 @@ export interface HomePayload {
   categorySnapshot: HomeCategorySnapshotItem[] | null;
   historicalTrend: HomeHistoricalTrendPoint[] | null;
   recentTransactions: HomeRecentTransaction[] | null;
-  topMerchants: HomeTopMerchant[] | null;
+  spendingStats: HomeSpendingStats | null;
   needsAttention: HomeNeedsAttention | null;
   bankHealth: HomeBankHealthItem[] | null;
   nextScheduledSync: string | null;

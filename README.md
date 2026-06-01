@@ -67,7 +67,7 @@ Transactions, settings, budgets, and sensitive settings live in local SQLite und
 <td valign="top">
 
 ### 📊 Budgets with pacing
-Hierarchical categories, monthly targets, pacing cards, per-category drilldowns, and statistics-based budget review help you see where the month is going.
+Hierarchical categories, monthly targets, pacing cards, per-category drilldowns, and spending statistics help you see where the month is going.
 
 </td>
 <td valign="top">
@@ -87,7 +87,7 @@ Native companion in the macOS menu bar or Windows notification area. Open the da
 <td valign="top">
 
 ### 🎯 Transfers and income
-Income and expense categories are tracked separately, with Transfers available on both sides so repayments and account movements net correctly in summaries.
+Income and expense categories are tracked separately, with Transfers available for account movements that should stay out of spending metrics.
 
 </td>
 <td valign="top">
@@ -264,7 +264,7 @@ The dashboard import dialog supports multiple files at once.
 
 Imported rows use provider IDs that match their template, such as `max_bill`, `isracard_bill`, `cal_bill`, `hapoalim_bank_account`, or `leumi_bank_account`. The transactions page can filter totals and rows by cards, bank accounts, income, expenses, and pending review.
 
-Positive bank-account rows are treated as income. Common transfer-like movements, including credit-card payments and account transfers, can be categorized as Transfers. Expense-side transfer totals include outgoing transfers, while income-side Transfers subtract from those totals so moving money between accounts does not inflate spending.
+Positive bank-account rows are treated as income. Common transfer-like movements, including credit-card payments and account transfers, can be categorized as Transfers. Transfer rows stay visible for review, but dashboard spending, cash-flow charts, top merchants, category breakdowns, and budget totals exclude them so moving money between accounts does not inflate spend.
 
 ## Reviewing budget statistics
 
@@ -278,7 +278,7 @@ On that page you can:
 4. Review the suggested monthly target.
 5. Click **Apply budgets** only when the chosen numbers look right.
 
-The statistics are calculated from transactions already stored in the local SQLite database. Transfer statistics use the same signed treatment as the dashboard, so incoming transfer rows reduce the transfer total instead of appearing as ordinary income. Saving writes only the numbers you selected.
+The statistics are calculated from transactions already stored in the local SQLite database. Transfer rows are excluded from the spending statistics and dashboard totals. Saving writes only the numbers you selected.
 
 ## How you will use it
 

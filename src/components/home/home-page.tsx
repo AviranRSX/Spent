@@ -15,7 +15,7 @@ import { CashFlowCard } from "./cash-flow-card";
 import { CategorySnapshotCard } from "./category-snapshot-card";
 import { HistoricalTrendCard } from "./historical-trend-card";
 import { RecentTransactionsCard } from "./recent-transactions-card";
-import { TopMerchantsCard } from "./top-merchants-card";
+import { SpendingStatsCard } from "./spending-stats-card";
 import { NeedsAttentionCard } from "./needs-attention-card";
 import { BankHealthCard } from "./bank-health-card";
 import { SyncStatusPill } from "./sync-status-pill";
@@ -42,9 +42,9 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
       thisMonth: t("thisMonthLabel", { month: "" }).trim() || t("topCategoriesTitle"),
       cashFlow: t("cashFlowTitle"),
       categorySnapshot: t("topCategoriesTitle"),
-      historicalTrend: t("last8Months"),
+      historicalTrend: t("last6Months"),
       recentTransactions: t("recentActivity"),
-      topMerchants: t("topMerchants"),
+      spendingStats: t("spendingStatsTitle"),
       needsAttention: t("needsAttention"),
       bankHealth: t("bankConnections"),
     }),
@@ -132,7 +132,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
           {renderSection("categorySnapshot", data, isLoading, isError, ROW_2, skeletonLabels)}
           {renderSection("historicalTrend", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
           {renderSection("recentTransactions", data, isLoading, isError, ROW_2, skeletonLabels)}
-          {renderSection("topMerchants", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
+          {renderSection("spendingStats", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
           {renderSection("needsAttention", data, isLoading, isError, ROW_2, skeletonLabels)}
           {scraperMode &&
             renderSection("bankHealth", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
@@ -194,9 +194,9 @@ function renderCard(section: HomeSection, data: HomePayload) {
       return data.recentTransactions ? (
         <RecentTransactionsCard items={data.recentTransactions} />
       ) : null;
-    case "topMerchants":
-      return data.topMerchants ? (
-        <TopMerchantsCard items={data.topMerchants} />
+    case "spendingStats":
+      return data.spendingStats ? (
+        <SpendingStatsCard data={data.spendingStats} />
       ) : null;
     case "needsAttention":
       return data.needsAttention ? (
@@ -215,7 +215,7 @@ const SKELETON_HEIGHTS: Record<HomeSection, number> = {
   categorySnapshot: 220,
   historicalTrend: 180,
   recentTransactions: 280,
-  topMerchants: 220,
+  spendingStats: 500,
   needsAttention: 160,
   bankHealth: 160,
 };

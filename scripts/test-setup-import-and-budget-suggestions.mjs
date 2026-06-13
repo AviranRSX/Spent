@@ -1,0 +1,329 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const suggestions = await import("../src/server/lib/budget-suggestions.ts");
+const staging = await import("../src/lib/imports/batch-staging.ts");
+const classificationProgress = await import(
+  "../src/lib/setup/classification-progress.ts"
+);
+const wizardFlow = await import("../src/lib/setup/wizard-flow.ts");
+const categorizeReview = await import("../src/lib/categorize-review.ts");
+
+test("budget suggestions use exactly the last 3 complete months", () => {
+  assert.deepEqual(
+    suggestions.getLastCompleteMonths(new Date("2026-05-23T12:00:00+03:00")),
+    ["2026-02", "2026-03", "2026-04"]
+  );
+});
+
+test("budget suggestions can use a larger complete-month window", () => {
+  assert.deepEqual(
+    suggestions.getLastCompleteMonths(new Date("2026-05-23T12:00:00+03:00"), 5),
+    ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04"]
+  );
+});
+
+test("budget suggestion month count clamps to at least 3 and available data", () => {
+  assert.equal(suggestions.resolveBudgetSuggestionMonthCount(null, 8), 3);
+  assert.equal(suggestions.resolveBudgetSuggestionMonthCount(1, 8), 3);
+  assert.equal(suggestions.resolveBudgetSuggestionMonthCount(6, 8), 6);
+  assert.equal(suggestions.resolveBudgetSuggestionMonthCount(12, 8), 8);
+});
+
+test("budget suggestions require 3 complete months", () => {
+  const result = suggestions.buildBudgetSuggestions({
+    now: new Date("2026-05-23T12:00:00+03:00"),
+    monthCount: 3,
+    availableMonths: ["2026-03", "2026-04"],
+    categoryMonthlySpend: [],
+    bankMonthlySpend: [],
+  });
+
+  assert.equal(result.hasEnoughHistory, false);
+  assert.equal(result.message, "there is not enoght month for satistic");
+  assert.deepEqual(result.months, ["2026-02", "2026-03", "2026-04"]);
+  assert.deepEqual(result.categorySuggestions, []);
+  assert.equal(result.totalBudgetSuggestion, null);
+});
+
+test("budget suggestions use category mean and total bank mean", () => {
+  const result = suggestions.buildBudgetSuggestions({
+    now: new Date("2026-05-23T12:00:00+03:00"),
+    monthCount: 3,
+    availableMonths: ["2026-02", "2026-03", "2026-04"],
+    categoryMonthlySpend: [
+      { month: "2026-02", categoryId: 1, categoryName: "Food", amount: 100 },
+      { month: "2026-03", categoryId: 1, categoryName: "Food", amount: 900 },
+      { month: "2026-04", categoryId: 1, categoryName: "Food", amount: 200 },
+      { month: "2026-03", categoryId: 2, categoryName: "Transport", amount: 60 },
+      { month: "2026-04", categoryId: 2, categoryName: "Transport", amount: 120 },
+    ],
+    bankMonthlySpend: [
+      { month: "2026-02", amount: 7000 },
+      { month: "2026-03", amount: 3000 },
+      { month: "2026-04", amount: 5000 },
+    ],
+  });
+
+  assert.equal(result.hasEnoughHistory, true);
+  assert.equal(result.message, null);
+  assert.deepEqual(result.months, ["2026-02", "2026-03", "2026-04"]);
+  assert.deepEqual(result.categorySuggestions, [
+    {
+      categoryId: 1,
+      categoryName: "Food",
+      mean: 400,
+      median: 200,
+      suggestedBudget: 400,
+    },
+    {
+      categoryId: 2,
+      categoryName: "Transport",
+      mean: 60,
+      median: 60,
+      suggestedBudget: 60,
+    },
+  ]);
+  assert.deepEqual(result.totalBudgetSuggestion, {
+    mean: 5000,
+    median: 5000,
+    suggestedBudget: 5000,
+  });
+});
+
+test("budget suggestion apply plan uses explicit user selections", () => {
+  assert.deepEqual(
+    suggestions.buildBudgetSuggestionApplyPlanFromSelections({
+      categoryBudgets: [
+        { categoryId: 1, amount: 220.4 },
+        { categoryId: 2, amount: 0 },
+        { categoryId: 3, amount: -1 },
+        { categoryId: 4, amount: Number.NaN },
+      ],
+      monthlyTarget: 4200.6,
+    }),
+    {
+      categoryBudgets: [
+        { categoryId: 1, amount: 220.4 },
+        { categoryId: 2, amount: 0 },
+      ],
+      monthlyTarget: 4200.6,
+    }
+  );
+});
+
+test("budget suggestions average over the selected month count", () => {
+  const result = suggestions.buildBudgetSuggestions({
+    now: new Date("2026-05-23T12:00:00+03:00"),
+    monthCount: 4,
+    availableMonths: ["2026-01", "2026-02", "2026-03", "2026-04"],
+    categoryMonthlySpend: [
+      { month: "2026-01", categoryId: 1, categoryName: "Food", amount: 100 },
+      { month: "2026-02", categoryId: 1, categoryName: "Food", amount: 300 },
+      { month: "2026-03", categoryId: 1, categoryName: "Food", amount: 500 },
+      { month: "2026-04", categoryId: 1, categoryName: "Food", amount: 700 },
+    ],
+    bankMonthlySpend: [
+      { month: "2026-01", amount: 1000 },
+      { month: "2026-02", amount: 3000 },
+      { month: "2026-03", amount: 5000 },
+      { month: "2026-04", amount: 7000 },
+    ],
+  });
+
+  assert.deepEqual(result.months, ["2026-01", "2026-02", "2026-03", "2026-04"]);
+  assert.equal(result.categorySuggestions[0]?.suggestedBudget, 400);
+  assert.equal(result.totalBudgetSuggestion?.suggestedBudget, 4000);
+});
+
+test("setup import staging appends later file selections and clears stale previews", () => {
+  const first = staging.appendSelectedImportFiles([], [
+    { name: "feb.xlsx", lastModified: 1 },
+  ]);
+  const second = staging.appendSelectedImportFiles(first, [
+    { name: "mar.xlsx", lastModified: 2 },
+  ]);
+
+  assert.equal(second.length, 2);
+  assert.deepEqual(second.map((item) => item.file.name), ["feb.xlsx", "mar.xlsx"]);
+  assert.equal(second[0].id, "feb.xlsx-1-0");
+  assert.equal(second[1].id, "mar.xlsx-2-1");
+});
+
+test("setup import staging totals all previewed files", () => {
+  const totals = staging.summarizeImportPreviews([
+    {
+      fileName: "feb.xlsx",
+      kind: "card",
+      templateType: "isracard_bill",
+      rows: [{ id: 1 }, { id: 2 }],
+      duplicateCount: 1,
+      errors: [],
+    },
+    {
+      fileName: "mar.xlsx",
+      kind: "bank",
+      templateType: "hapoalim_bank_account",
+      rows: [{ id: 3 }],
+      duplicateCount: 0,
+      errors: [{ sheetName: "Sheet1", rowNumber: 2, message: "bad" }],
+    },
+  ]);
+
+  assert.deepEqual(totals, {
+    rows: 3,
+    duplicates: 1,
+    errors: 1,
+  });
+});
+
+test("setup import progress advances after each file for file-sized batches", () => {
+  const plan = staging.buildImportProgressPlan([
+    {
+      fileName: "feb.xlsx",
+      rows: [{ id: 1 }, { id: 2 }],
+      duplicateCount: 0,
+      errors: [],
+    },
+    {
+      fileName: "mar.xlsx",
+      rows: [{ id: 3 }],
+      duplicateCount: 0,
+      errors: [],
+    },
+  ]);
+
+  assert.equal(plan.mode, "file");
+  assert.equal(plan.totalSteps, 2);
+  assert.deepEqual(plan.steps.map((step) => step.completedRows), [2, 3]);
+  assert.deepEqual(plan.steps.map((step) => step.label), [
+    "Prepared feb.xlsx",
+    "Prepared mar.xlsx",
+  ]);
+});
+
+test("setup import progress advances every 10 rows for concatenated row batches", () => {
+  const plan = staging.buildImportProgressPlan([
+    {
+      fileName: "may.xlsx",
+      rows: Array.from({ length: 25 }, (_, id) => ({ id })),
+      duplicateCount: 0,
+      errors: [],
+    },
+  ]);
+
+  assert.equal(plan.mode, "rows");
+  assert.equal(plan.totalSteps, 3);
+  assert.deepEqual(plan.steps.map((step) => step.completedRows), [10, 20, 25]);
+  assert.deepEqual(plan.steps.map((step) => step.label), [
+    "Prepared 10 of 25 rows",
+    "Prepared 20 of 25 rows",
+    "Prepared 25 of 25 rows",
+  ]);
+});
+
+test("setup xlsx import shows progress for more than one selected file", () => {
+  assert.equal(wizardFlow.shouldShowSetupImportProgress(2, 2), true);
+});
+
+test("setup xlsx import skips AI category review after importing", () => {
+  assert.equal(wizardFlow.getStepAfterXlsxImport(), 9);
+});
+
+test("setup xlsx stepper excludes AI category review", () => {
+  const steps = wizardFlow.getVisibleSetupStepNumbers("first-run", "xlsx");
+
+  assert.deepEqual(steps, [6, 2, 7, 9, 5, 3, 4]);
+});
+
+test("setup xlsx statistics back button returns to import", () => {
+  assert.equal(wizardFlow.getStepBeforeBudgetSuggestions("xlsx"), 7);
+});
+
+test("setup classification progress is visible only while AI preview is loading", () => {
+  assert.deepEqual(classificationProgress.getClassificationProgressState(true, null), {
+    visible: true,
+    label: "Asking the AI to classify imported transactions",
+    percent: null,
+    valueLabel: "",
+  });
+
+  assert.deepEqual(classificationProgress.getClassificationProgressState(false, null), {
+    visible: false,
+    label: "",
+    percent: null,
+    valueLabel: "",
+  });
+});
+
+test("setup classification progress reports classified rows and percent", () => {
+  assert.deepEqual(
+    classificationProgress.getClassificationProgressState(true, {
+      processed: 50,
+      total: 125,
+    }),
+    {
+      visible: true,
+      label: "Classified 50 of 125 rows",
+      percent: 40,
+      valueLabel: "40%",
+    }
+  );
+});
+
+test("setup classification progress reports the active row range", () => {
+  assert.deepEqual(
+    classificationProgress.getClassificationProgressState(true, {
+      processed: 0,
+      total: 23,
+      currentStart: 1,
+      currentEnd: 10,
+    }),
+    {
+      visible: true,
+      label: "Classifying rows 1-10 of 23",
+      percent: 0,
+      valueLabel: "0%",
+    }
+  );
+});
+
+test("category review payload redirects rejected proposals to existing categories", () => {
+  const payload = categorizeReview.buildCategorizeApplyPayload({
+    preview: {
+      uncategorizedCount: 2,
+      assignments: [
+        {
+          transactionId: 1,
+          description: "market",
+          categoryName: "Food Stores",
+          isNew: true,
+          kind: "expense",
+          aiConfidence: 5,
+        },
+        {
+          transactionId: 2,
+          description: "bus",
+          categoryName: "Transport",
+          isNew: false,
+          kind: "expense",
+          aiConfidence: 6,
+        },
+      ],
+      proposedCategories: [
+        {
+          name: "Food Stores",
+          kind: "expense",
+          transactionIds: [1],
+          samples: ["market"],
+        },
+      ],
+      existingCategoryUsage: { Transport: 1 },
+    },
+    approvedMap: { "Food Stores": false },
+    fallbackMap: { "Food Stores": "Groceries" },
+  });
+
+  assert.deepEqual(payload.approvedNewCategoryNames, []);
+  assert.deepEqual(payload.rejectionFallbacks, { "Food Stores": "Groceries" });
+});

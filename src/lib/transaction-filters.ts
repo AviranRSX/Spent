@@ -1,5 +1,11 @@
 import type { Category } from "@/lib/types";
 
+export function getTransactionCategoryOptions(
+  categories: Category[]
+): Category[] {
+  return categories.filter((category) => category.name !== "Transfers");
+}
+
 /** Leaf ids for a category, or the category itself when it has no children. */
 export function getCategoryDescendantIds(
   categoryId: number,

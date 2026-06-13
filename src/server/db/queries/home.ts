@@ -2,7 +2,15 @@ import "server-only";
 
 import { getDb } from "../index";
 import { toLocalISODate } from "../../lib/date-utils";
-import { buildMonthlyCashFlowTrend } from "../../lib/home-analytics";
+import {
+  buildMonthlyCashFlowTrend,
+  HOME_CASH_FLOW_SOURCE_TYPE,
+  HOME_CATEGORY_SOURCE_TYPE,
+} from "../../lib/home-analytics";
+import {
+  BANK_TRANSACTION_PROVIDERS,
+  type TransactionSourceType,
+} from "@/lib/transaction-source-types";
 import type {
   HomeBankHealthItem,
   HomeCashFlow,
@@ -20,6 +28,27 @@ const EXCLUDE_TRANSFERS_SQL = `NOT EXISTS (
     AND transfer_category.workspace_id = t.workspace_id
     AND transfer_category.name = 'Transfers'
 )`;
+
+function homeSourceProviders(
+  sourceType: TransactionSourceType
+): readonly string[] {
+  return sourceType === "bank" ? BANK_TRANSACTION_PROVIDERS : [];
+}
+
+function homeSourceSql(providers: readonly string[]): string {
+  return providers.length > 0
+    ? `t.provider IN (${providers.map(() => "?").join(",")})`
+    : "1 = 1";
+}
+
+const HOME_CASH_FLOW_SOURCE_PROVIDERS = homeSourceProviders(
+  HOME_CASH_FLOW_SOURCE_TYPE
+);
+const HOME_CATEGORY_SOURCE_PROVIDERS = homeSourceProviders(
+  HOME_CATEGORY_SOURCE_TYPE
+);
+const HOME_CASH_FLOW_SOURCE_SQL = homeSourceSql(HOME_CASH_FLOW_SOURCE_PROVIDERS);
+const HOME_CATEGORY_SOURCE_SQL = homeSourceSql(HOME_CATEGORY_SOURCE_PROVIDERS);
 
 function getMonthRange(fromMonth: string, toMonth: string): string[] {
   const [fromYear, fromMonthNumber] = fromMonth.split("-").map(Number);
@@ -50,18 +79,24 @@ export function getCashFlow(
        FROM transactions t
        WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
          AND t.status = 'completed' AND t.kind = 'income'
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
          AND ${EXCLUDE_TRANSFERS_SQL}`
     )
-    .get(workspaceId, from, to) as { total: number };
+    .get(workspaceId, from, to, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as {
+    total: number;
+  };
   const expenses = db
     .prepare(
       `SELECT COALESCE(SUM(ABS(charged_amount)), 0) as total
        FROM transactions t
        WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
          AND t.status = 'completed' AND t.kind = 'expense'
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
          AND ${EXCLUDE_TRANSFERS_SQL}`
     )
-    .get(workspaceId, from, to) as { total: number };
+    .get(workspaceId, from, to, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as {
+    total: number;
+  };
   return {
     income: income.total,
     expenses: expenses.total,
@@ -111,9 +146,10 @@ export function getHistoricalTrend(
        AND t.status = 'completed'
        AND t.kind IN ('income', 'expense')
        AND strftime('%Y-%m', t.date) IN (${placeholders})
+       AND ${HOME_CASH_FLOW_SOURCE_SQL}
        AND ${EXCLUDE_TRANSFERS_SQL}
      GROUP BY month, t.kind`
-  ).all(workspaceId, ...monthKeys) as Array<{
+  ).all(workspaceId, ...monthKeys, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as Array<{
     month: string;
     kind: "income" | "expense";
     total: number;
@@ -135,8 +171,11 @@ export function getSpendingStats(
        AND t.date <= ?
        AND t.status = 'completed'
        AND t.kind IN ('income', 'expense')
+       AND ${HOME_CATEGORY_SOURCE_SQL}
        AND ${EXCLUDE_TRANSFERS_SQL}`
-  ).get(workspaceId, to) as { month: string | null };
+  ).get(workspaceId, to, ...HOME_CATEGORY_SOURCE_PROVIDERS) as {
+    month: string | null;
+  };
   const now = new Date();
   const fallbackStart = new Date(
     now.getFullYear(),
@@ -163,10 +202,16 @@ export function getSpendingStats(
        AND t.date <= ?
        AND t.status = 'completed'
        AND t.kind = 'expense'
+       AND ${HOME_CATEGORY_SOURCE_SQL}
        AND c.name != 'Transfers'
      GROUP BY month, c.id, c.name, c.color
      ORDER BY month ASC`
-  ).all(workspaceId, trendFrom, to) as Array<{
+  ).all(
+    workspaceId,
+    trendFrom,
+    to,
+    ...HOME_CATEGORY_SOURCE_PROVIDERS
+  ) as Array<{
     month: string;
     categoryId: number;
     name: string;
@@ -186,10 +231,16 @@ export function getSpendingStats(
        AND t.date <= ?
        AND t.status = 'completed'
        AND t.kind IN ('income', 'expense')
+       AND ${HOME_CASH_FLOW_SOURCE_SQL}
        AND ${EXCLUDE_TRANSFERS_SQL}
      GROUP BY month, t.kind
      ORDER BY month ASC`
-  ).all(workspaceId, trendFrom, to) as Array<{
+  ).all(
+    workspaceId,
+    trendFrom,
+    to,
+    ...HOME_CASH_FLOW_SOURCE_PROVIDERS
+  ) as Array<{
     month: string;
     kind: "income" | "expense";
     total: number;
@@ -370,10 +421,14 @@ export function getCategorySnapshot(
        WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
          AND t.status = 'completed' AND t.kind = 'expense'
          AND t.category_id IS NOT NULL
+         AND ${HOME_CATEGORY_SOURCE_SQL}
          AND ${EXCLUDE_TRANSFERS_SQL}
        GROUP BY category_id`
     )
-    .all(workspaceId, from, to) as Array<{ categoryId: number; amount: number }>;
+    .all(workspaceId, from, to, ...HOME_CATEGORY_SOURCE_PROVIDERS) as Array<{
+    categoryId: number;
+    amount: number;
+  }>;
 
   const budgetRows = db
     .prepare(

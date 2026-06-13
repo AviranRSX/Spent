@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getPeriodTotal } from "@/server/db/queries/transactions";
 import {
+  getLastCompleteMonthEnd,
+  HOME_CASH_FLOW_SOURCE_TYPE,
+} from "@/server/lib/home-analytics";
+import {
   getBankHealth,
   getCashFlow,
   getCategorySnapshot,
@@ -80,6 +84,7 @@ export async function GET(request: Request) {
   const thisMonth = safe<HomeThisMonth>("thisMonth", errors, () => {
     const spent = getPeriodTotal(workspaceId, from, to, {
       excludeTransfers: true,
+      sourceType: HOME_CASH_FLOW_SOURCE_TYPE,
     });
     const monthlyTargetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
     const parsed = monthlyTargetRaw != null ? Number(monthlyTargetRaw) : NaN;
@@ -100,7 +105,7 @@ export async function GET(request: Request) {
       workspaceId,
       toLocalISODate(prevMonthStart),
       toLocalISODate(prevMonthMtdEnd),
-      { excludeTransfers: true }
+      { excludeTransfers: true, sourceType: HOME_CASH_FLOW_SOURCE_TYPE }
     );
     const deltaVsLastMonth =
       prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
@@ -140,9 +145,10 @@ export async function GET(request: Request) {
     () => getRecentTransactionsForHome(workspaceId, RECENT_TXN_LIMIT)
   );
 
-  const spendingStats = safe<HomeSpendingStats>("spendingStats", errors, () =>
-    getSpendingStats(workspaceId, to, HISTORICAL_MONTHS)
-  );
+  const spendingStats = safe<HomeSpendingStats>("spendingStats", errors, () => {
+    const statsTo = toLocalISODate(getLastCompleteMonthEnd(now));
+    return getSpendingStats(workspaceId, statsTo, HISTORICAL_MONTHS);
+  });
 
   const needsAttention = safe<HomeNeedsAttention>(
     "needsAttention",

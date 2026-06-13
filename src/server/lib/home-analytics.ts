@@ -5,6 +5,7 @@ import type {
   HomeCategoryMean,
   HomeHistoricalTrendPoint,
 } from "@/lib/types";
+import type { TransactionSourceType } from "@/lib/transaction-source-types";
 
 interface MonthInfo {
   key: string;
@@ -23,6 +24,13 @@ interface CategorySpendRow {
   name: string;
   color: string;
   amount: number;
+}
+
+export const HOME_CASH_FLOW_SOURCE_TYPE = "bank" as const satisfies TransactionSourceType;
+export const HOME_CATEGORY_SOURCE_TYPE = "all" as const satisfies TransactionSourceType;
+
+export function getLastCompleteMonthEnd(now: Date): Date {
+  return new Date(now.getFullYear(), now.getMonth(), 0);
 }
 
 export function buildMonthlyCashFlowTrend(

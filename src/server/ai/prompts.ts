@@ -2,6 +2,7 @@ import "server-only";
 
 import type {
   CategoryForCategorization,
+  MatchingDescriptionHistory,
   PastCorrection,
   TransactionForCategorization,
 } from "./types";
@@ -59,6 +60,31 @@ ${lines}
 `;
 }
 
+function renderMatchingHistory(
+  matchingHistory: MatchingDescriptionHistory[]
+): string {
+  const uniqueHistory = new Map<string, MatchingDescriptionHistory>();
+  for (const history of matchingHistory) {
+    if (!uniqueHistory.has(history.normalizedDescription)) {
+      uniqueHistory.set(history.normalizedDescription, history);
+    }
+  }
+  if (uniqueHistory.size === 0) return "";
+
+  const lines = Array.from(uniqueHistory.values())
+    .map((history) => {
+      const counts = history.categories
+        .map((category) => `${category.categoryName}: ${category.count}`)
+        .join(", ");
+      return `- "${history.displayDescription}": ${counts}. Total: ${history.total}.`;
+    })
+    .join("\n");
+  return `
+Matching description history:
+${lines}
+`;
+}
+
 const CONFIDENCE_BLOCK = `Confidence scale (integer 1-7):
 - 7: certain. Well-known merchant, clearly fits this category.
 - 5-6: confident. Reasonable inference, minor ambiguity.
@@ -69,10 +95,12 @@ export function buildCategorizationPrompt(
   transactions: TransactionForCategorization[],
   categories: CategoryForCategorization[],
   allowProposals = false,
-  pastCorrections: PastCorrection[] = []
+  pastCorrections: PastCorrection[] = [],
+  matchingHistory: MatchingDescriptionHistory[] = []
 ): string {
   const categoriesBlock = renderCategories(categories);
   const correctionsBlock = renderCorrections(pastCorrections);
+  const matchingHistoryBlock = renderMatchingHistory(matchingHistory);
 
   const transactionLines = transactions
     .map(
@@ -87,6 +115,7 @@ export function buildCategorizationPrompt(
 Categories (use ONLY these names):
 ${categoriesBlock}
 ${correctionsBlock}
+${matchingHistoryBlock}
 Transactions:
 ${transactionLines}
 
@@ -101,7 +130,9 @@ Rules:
 - Every transaction must be categorized; pick the closest matching category.
 - Israeli merchant names (Hebrew or transliterated) are common; categorize based on the business type.
 - Pay attention to the "NOT" clauses in the category descriptions - they disambiguate common confusions.
-- Apply lessons from "Past corrections" - if a new merchant resembles a past correction, prefer the corrected category.`;
+- Apply lessons from "Past corrections" - if a new merchant resembles a past correction, prefer the corrected category.
+- Matching-description history contains prior categorized transactions with the same normalized description.
+- Treat this history as strong evidence, but resolve ambiguity using the transaction details and category definitions.`;
   }
 
   // Proposal mode: the AI is encouraged to suggest new categories whenever
@@ -111,6 +142,7 @@ Rules:
 Existing categories:
 ${categoriesBlock}
 ${correctionsBlock}
+${matchingHistoryBlock}
 Transactions:
 ${transactionLines}
 
@@ -132,7 +164,9 @@ Rules for every transaction:
 - ${HIERARCHY_RULE}
 - Israeli merchant names (Hebrew or transliterated) are common; categorize based on the business type.
 - Pay attention to the "NOT" clauses in the category descriptions.
-- Apply lessons from "Past corrections" - if a new merchant resembles a past correction, prefer the corrected category.`;
+- Apply lessons from "Past corrections" - if a new merchant resembles a past correction, prefer the corrected category.
+- Matching-description history contains prior categorized transactions with the same normalized description.
+- Treat this history as strong evidence, but resolve ambiguity using the transaction details and category definitions.`;
 }
 
 export const SYSTEM_PROMPT =

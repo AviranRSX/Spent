@@ -4,6 +4,10 @@ import { getDb } from "../index";
 import { computeDedupHash } from "../../lib/dedup";
 import { combineTransactionPageSummaryTotals } from "../../lib/transaction-summary";
 import { detectKind } from "../../lib/transfers";
+import {
+  queryCategorizedDescriptionCounts,
+  type CategorizedDescriptionCountRow,
+} from "../../sync/description-history";
 import type {
   TransactionWithCategory,
   MonthlySummary,
@@ -411,6 +415,13 @@ export function getTransactionsForCategorization(
        FROM transactions WHERE workspace_id = ? AND id IN (${placeholders})`
     )
     .all(workspaceId, ...ids) as { id: number; description: string; chargedAmount: number; originalCurrency: string; memo: string | null }[];
+}
+
+export function getCategorizedDescriptionCounts(
+  workspaceId: number,
+  kind: "expense" | "income"
+): CategorizedDescriptionCountRow[] {
+  return queryCategorizedDescriptionCounts(getDb(), workspaceId, kind);
 }
 
 export function updateTransactionCategory(

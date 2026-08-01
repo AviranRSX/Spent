@@ -2,9 +2,9 @@ import "server-only";
 
 import type {
   AIProvider,
+  CategorizationOptions,
   CategoryForCategorization,
   CategoryMapping,
-  PastCorrection,
   TransactionForCategorization,
 } from "../types";
 import { parseCategorizationResponse } from "../parse-response";
@@ -33,7 +33,7 @@ export class OllamaProvider implements AIProvider {
   async categorize(
     transactions: TransactionForCategorization[],
     categories: CategoryForCategorization[],
-    options?: { allowProposals?: boolean; pastCorrections?: PastCorrection[] }
+    options?: CategorizationOptions
   ): Promise<CategoryMapping[]> {
     const allowProposals = options?.allowProposals ?? false;
     const pastCorrections = options?.pastCorrections ?? [];
@@ -41,8 +41,11 @@ export class OllamaProvider implements AIProvider {
       transactions,
       categories,
       allowProposals,
-      pastCorrections
+      pastCorrections,
+      options?.matchingHistory ?? []
     );
+
+    options?.onPrompt?.({ systemPrompt: SYSTEM_PROMPT, userPrompt: prompt });
 
     const response = await fetch(`${this.baseUrl}/api/chat`, {
       method: "POST",

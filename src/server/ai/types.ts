@@ -36,10 +36,29 @@ export interface PastCorrection {
   correctCategory: string;
 }
 
+export interface MatchingDescriptionHistory {
+  normalizedDescription: string;
+  displayDescription: string;
+  total: number;
+  categories: Array<{ categoryName: string; count: number }>;
+}
+
+export interface CategorizationPromptObservation {
+  systemPrompt: string;
+  userPrompt: string;
+}
+
+export interface CategorizationOptions {
+  allowProposals?: boolean;
+  pastCorrections?: PastCorrection[];
+  matchingHistory?: MatchingDescriptionHistory[];
+  onPrompt?: (observation: CategorizationPromptObservation) => void;
+}
+
 export interface AIProvider {
   categorize(
     transactions: TransactionForCategorization[],
     categories: CategoryForCategorization[],
-    options?: { allowProposals?: boolean; pastCorrections?: PastCorrection[] }
+    options?: CategorizationOptions
   ): Promise<CategoryMapping[]>;
 }

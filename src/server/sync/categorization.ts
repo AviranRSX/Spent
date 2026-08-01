@@ -8,6 +8,7 @@ import { getAppSettings } from "@/server/db/queries/settings";
 import {
   batchSetNeedsReview,
   batchUpdateCategories,
+  getCategorizedDescriptionCounts,
   getTransactionsForCategorization,
   getUncategorizedIdsByKind,
 } from "@/server/db/queries/transactions";
@@ -16,6 +17,12 @@ import {
   lookupMerchantCategoriesBulk,
   normalizeMerchant,
 } from "@/server/lib/merchant-memory";
+import {
+  buildDescriptionHistory,
+  planDescriptionHistoryRoutes,
+  type DescriptionCategoryHistory,
+} from "@/server/sync/description-history";
+import type { CategoryMapping, MatchingDescriptionHistory } from "@/server/ai/types";
 
 export type CategorizationEventSender = (
   event: string,
@@ -38,38 +45,126 @@ export function friendlyAIError(err: unknown, modelName: string): string {
 
 const NOOP_SEND: CategorizationEventSender = () => {};
 
+export type CategorizationDecisionReason =
+  | "memory-hit"
+  | "majority-vote"
+  | "below-threshold"
+  | "tied-vote"
+  | "no-history";
+
+export type CategorizationDiagnosticEvent =
+  | {
+      type: "decision";
+      transactionId: number;
+      description: string;
+      normalizedDescription: string;
+      kind: "expense" | "income";
+      historicalMatchCount: number;
+      history: Array<{ category: string; count: number }>;
+      route: "memory" | "database" | "ai";
+      reason: CategorizationDecisionReason;
+      selectedCategory: string | null;
+    }
+  | {
+      type: "ai-batch";
+      kind: "expense" | "income";
+      transactionIds: number[];
+      systemPrompt: string;
+      userPrompt: string;
+      mappings: CategoryMapping[];
+      updates: Array<{
+        id: number;
+        categoryId: number;
+        aiConfidence: number | null;
+        needsReview: boolean;
+      }>;
+      error: string | null;
+    };
+
+export type CategorizationDiagnosticSink = (
+  event: CategorizationDiagnosticEvent
+) => void;
+
+function toDiagnosticHistory(
+  history: DescriptionCategoryHistory | null
+): Array<{ category: string; count: number }> {
+  return (
+    history?.categories.map((category) => ({
+      category: category.categoryName,
+      count: category.count,
+    })) ?? []
+  );
+}
+
+function buildBatchMatchingHistory(
+  batch: Array<{
+    transaction: { description: string };
+    normalizedDescription: string;
+    history: {
+      total: number;
+      categories: Array<{ categoryName: string; count: number }>;
+    } | null;
+  }>
+): MatchingDescriptionHistory[] {
+  const unique = new Map<string, MatchingDescriptionHistory>();
+  for (const item of batch) {
+    if (!item.history || unique.has(item.normalizedDescription)) continue;
+    unique.set(item.normalizedDescription, {
+      normalizedDescription: item.normalizedDescription,
+      displayDescription: item.transaction.description,
+      total: item.history.total,
+      categories: item.history.categories.map((category) => ({
+        categoryName: category.categoryName,
+        count: category.count,
+      })),
+    });
+  }
+  return Array.from(unique.values());
+}
+
 export async function categorizeWorkspaceTransactions(
   workspaceId: number,
   workspaceName: string,
-  send: CategorizationEventSender = NOOP_SEND
+  send: CategorizationEventSender = NOOP_SEND,
+  diagnosticSink?: CategorizationDiagnosticSink
 ): Promise<{ categorized: number; aiWarning: string | null }> {
   const settings = getAppSettings(workspaceId);
   let categorized = 0;
   let aiWarning: string | null = null;
+  let aiProvider: ReturnType<typeof createAIProvider> | undefined;
+  let ollamaReady: boolean | undefined;
 
-  const aiProvider = createAIProvider();
-  if (!aiProvider) {
-    return {
-      categorized: 0,
-      aiWarning:
-        "AI provider not connected — new transactions weren't auto-categorized.",
-    };
-  }
-
-  if (settings.aiProvider === "ollama") {
-    send("stage", {
-      workspaceId,
-      workspaceName,
-      stage: "ollama-start",
-    });
-    const ollamaResult = await ensureOllamaRunning(settings.ollamaUrl);
-    if (!ollamaResult.ok) {
-      aiWarning = ollamaResult.error ?? "Ollama is not reachable";
-      console.error("[sync]", aiWarning);
+  async function getReadyAIProvider() {
+    if (aiProvider === undefined) {
+      aiProvider = createAIProvider();
+      if (!aiProvider) {
+        aiWarning =
+          "AI provider not connected - new transactions weren't auto-categorized.";
+        return null;
+      }
     }
-  }
 
-  if (aiWarning) return { categorized, aiWarning };
+    if (settings.aiProvider === "ollama" && ollamaReady === false) {
+      return null;
+    }
+
+    if (settings.aiProvider === "ollama" && ollamaReady === undefined) {
+      send("stage", {
+        workspaceId,
+        workspaceName,
+        stage: "ollama-start",
+      });
+      const ollamaResult = await ensureOllamaRunning(settings.ollamaUrl);
+      ollamaReady = ollamaResult.ok;
+      if (!ollamaResult.ok) {
+        aiWarning = ollamaResult.error ?? "Ollama is not reachable";
+        console.error("[sync]", aiWarning);
+        return null;
+      }
+    }
+
+    return aiProvider;
+  }
 
   send("stage", {
     workspaceId,
@@ -97,23 +192,40 @@ export async function categorizeWorkspaceTransactions(
       uncategorizedIds
     );
 
+    const historyByDescription = buildDescriptionHistory(
+      getCategorizedDescriptionCounts(workspaceId, kind)
+    );
+
     const memoryMap = lookupMerchantCategoriesBulk(
       workspaceId,
       allTxns.map((t) => t.description)
     );
 
+    const categoryNamesById = new Map(
+      categories.map((category) => [category.id, category.name])
+    );
     const memoryUpdates: { id: number; categoryId: number }[] = [];
     const memoryKeysHit: string[] = [];
-    const remainingTxns: typeof allTxns = [];
+    const memoryTransactionIds = new Set<number>();
     for (const txn of allTxns) {
       const memory = memoryMap.get(txn.description);
-      if (memory && memory.kind === kind) {
+      if (
+        memory &&
+        memory.kind === kind &&
+        categoryNamesById.has(memory.categoryId)
+      ) {
         memoryUpdates.push({ id: txn.id, categoryId: memory.categoryId });
         memoryKeysHit.push(normalizeMerchant(txn.description));
-      } else {
-        remainingTxns.push(txn);
+        memoryTransactionIds.add(txn.id);
       }
     }
+
+    const routePlan = planDescriptionHistoryRoutes(
+      allTxns,
+      memoryTransactionIds,
+      historyByDescription
+    );
+
     if (memoryUpdates.length > 0) {
       batchUpdateCategories(workspaceId, memoryUpdates);
       incrementMerchantHits(workspaceId, memoryKeysHit);
@@ -127,10 +239,81 @@ export async function categorizeWorkspaceTransactions(
       });
     }
 
-    for (let i = 0; i < remainingTxns.length; i += batchSize) {
-      const batch = remainingTxns.slice(i, i + batchSize);
+    const databaseUpdates = routePlan.databaseTransactions.map((item) => ({
+      id: item.transaction.id,
+      categoryId: item.decision.categoryId,
+    }));
+    if (databaseUpdates.length > 0) {
+      batchUpdateCategories(workspaceId, databaseUpdates);
+      categorized += databaseUpdates.length;
+      send("stage", {
+        workspaceId,
+        workspaceName,
+        stage: "history-hit",
+        count: databaseUpdates.length,
+        kind,
+      });
+    }
+
+    if (diagnosticSink) {
+      for (const transaction of routePlan.memoryTransactions) {
+        const normalizedDescription = normalizeMerchant(transaction.description);
+        const history = historyByDescription.get(normalizedDescription) ?? null;
+        const memory = memoryMap.get(transaction.description);
+        diagnosticSink({
+          type: "decision",
+          transactionId: transaction.id,
+          description: transaction.description,
+          normalizedDescription,
+          kind,
+          historicalMatchCount: history?.total ?? 0,
+          history: toDiagnosticHistory(history),
+          route: "memory",
+          reason: "memory-hit",
+          selectedCategory: memory
+            ? (categoryNamesById.get(memory.categoryId) ?? null)
+            : null,
+        });
+      }
+      for (const item of routePlan.databaseTransactions) {
+        diagnosticSink({
+          type: "decision",
+          transactionId: item.transaction.id,
+          description: item.transaction.description,
+          normalizedDescription: item.normalizedDescription,
+          kind,
+          historicalMatchCount: item.history.total,
+          history: toDiagnosticHistory(item.history),
+          route: "database",
+          reason: item.decision.reason,
+          selectedCategory: item.decision.categoryName,
+        });
+      }
+      for (const item of routePlan.aiTransactions) {
+        diagnosticSink({
+          type: "decision",
+          transactionId: item.transaction.id,
+          description: item.transaction.description,
+          normalizedDescription: item.normalizedDescription,
+          kind,
+          historicalMatchCount: item.history?.total ?? 0,
+          history: toDiagnosticHistory(item.history),
+          route: "ai",
+          reason: item.decision.reason,
+          selectedCategory: null,
+        });
+      }
+    }
+
+    for (let i = 0; i < routePlan.aiTransactions.length; i += batchSize) {
+      const batchPlan = routePlan.aiTransactions.slice(i, i + batchSize);
+      const batch = batchPlan.map((item) => item.transaction);
+      const readyProvider = await getReadyAIProvider();
+      if (!readyProvider) break;
+
+      let observedPrompt = { systemPrompt: "", userPrompt: "" };
       try {
-        const mappings = await aiProvider.categorize(
+        const mappings = await readyProvider.categorize(
           batch.map((txn) => ({
             description: txn.description,
             amount: txn.chargedAmount,
@@ -138,7 +321,13 @@ export async function categorizeWorkspaceTransactions(
             memo: txn.memo,
           })),
           categoryInput,
-          { pastCorrections }
+          {
+            pastCorrections,
+            matchingHistory: buildBatchMatchingHistory(batchPlan),
+            onPrompt(observation) {
+              observedPrompt = observation;
+            },
+          }
         );
 
         const updates: {
@@ -169,11 +358,36 @@ export async function categorizeWorkspaceTransactions(
         batchUpdateCategories(workspaceId, updates);
         batchSetNeedsReview(workspaceId, reviewFlags);
         categorized += updates.length;
+        diagnosticSink?.({
+          type: "ai-batch",
+          kind,
+          transactionIds: batch.map((transaction) => transaction.id),
+          systemPrompt: observedPrompt.systemPrompt,
+          userPrompt: observedPrompt.userPrompt,
+          mappings,
+          updates: updates.map((update) => ({
+            ...update,
+            needsReview:
+              reviewFlags.find((flag) => flag.id === update.id)?.needsReview ??
+              false,
+          })),
+          error: null,
+        });
       } catch (err) {
         console.error(`[sync] AI categorization batch failed (${kind}):`, err);
         if (!aiWarning) {
           aiWarning = friendlyAIError(err, settings.ollamaModel);
         }
+        diagnosticSink?.({
+          type: "ai-batch",
+          kind,
+          transactionIds: batch.map((transaction) => transaction.id),
+          systemPrompt: observedPrompt.systemPrompt,
+          userPrompt: observedPrompt.userPrompt,
+          mappings: [],
+          updates: [],
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }

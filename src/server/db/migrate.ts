@@ -3,8 +3,12 @@ import "server-only";
 import type Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
-const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+const MIGRATIONS_DIR = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "migrations"
+);
 
 export function runMigrations(db: Database.Database): void {
   db.exec(`

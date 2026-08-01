@@ -3,9 +3,9 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import type {
   AIProvider,
+  CategorizationOptions,
   CategoryForCategorization,
   CategoryMapping,
-  PastCorrection,
   TransactionForCategorization,
 } from "../types";
 import { parseCategorizationResponse } from "../parse-response";
@@ -21,7 +21,7 @@ export class ClaudeProvider implements AIProvider {
   async categorize(
     transactions: TransactionForCategorization[],
     categories: CategoryForCategorization[],
-    options?: { allowProposals?: boolean; pastCorrections?: PastCorrection[] }
+    options?: CategorizationOptions
   ): Promise<CategoryMapping[]> {
     const allowProposals = options?.allowProposals ?? false;
     const pastCorrections = options?.pastCorrections ?? [];
@@ -29,8 +29,11 @@ export class ClaudeProvider implements AIProvider {
       transactions,
       categories,
       allowProposals,
-      pastCorrections
+      pastCorrections,
+      options?.matchingHistory ?? []
     );
+
+    options?.onPrompt?.({ systemPrompt: SYSTEM_PROMPT, userPrompt: prompt });
 
     const response = await this.client.messages.create({
       model: "claude-haiku-4-5-20251001",

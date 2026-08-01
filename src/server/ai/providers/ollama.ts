@@ -54,6 +54,11 @@ export class OllamaProvider implements AIProvider {
           { role: "user", content: prompt },
         ],
         stream: false,
+        think: false,
+        options: {
+          temperature: 0,
+          num_ctx: 8192,
+        },
         format: CATEGORIZATION_FORMAT,
       }),
     });

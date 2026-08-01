@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
+import path from "node:path";
+import { registerHooks } from "node:module";
 import test from "node:test";
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith(".") && path.extname(specifier) === "") {
+      return nextResolve(`${specifier}.ts`, context);
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const transfers = await import("../src/server/lib/transfers.ts");
 const sourceTypes = await import("../src/lib/transaction-source-types.ts");
@@ -81,6 +92,48 @@ test("parses a single Ollama mapping object", async () => {
       },
     ]
   );
+});
+
+test("uses deterministic low-memory options for Ollama categorization", async () => {
+  const { OllamaProvider } = await import(
+    "../src/server/ai/providers/ollama.ts"
+  );
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+
+  globalThis.fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({
+        message: {
+          content: JSON.stringify([
+            { index: 0, categoryName: "Groceries", confidence: 7 },
+          ]),
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  };
+
+  try {
+    const provider = new OllamaProvider(
+      "http://localhost:11434",
+      "qwen3.5:9b"
+    );
+
+    await provider.categorize(
+      [{ description: "Supermarket", amount: -100, currency: "ILS" }],
+      [{ name: "Groceries", description: "Food stores" }]
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(requestBody.think, false);
+  assert.deepEqual(requestBody.options, {
+    temperature: 0,
+    num_ctx: 8192,
+  });
 });
 
 test("proposal prompt matches main classification behavior", async () => {

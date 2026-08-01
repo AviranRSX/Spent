@@ -10,20 +10,9 @@ import { categorizeWorkspaceTransactions } from "@/server/sync/categorization";
 import { toLocalISODate } from "@/server/lib/date-utils";
 import type { ImportSourceKind, ImportTemplateType } from "@/lib/types";
 import type { ParsedImportTransaction } from "@/lib/imports/xlsx-parser";
+import type { ImportPreviewRow } from "@/lib/imports/import-types";
 
-export interface ImportPreviewRow extends ParsedImportTransaction {
-  dedupHash: string;
-  duplicate: boolean;
-}
-
-export interface ImportPreviewFile {
-  fileName: string;
-  kind: ImportSourceKind;
-  templateType: ImportTemplateType;
-  rows: ImportPreviewRow[];
-  duplicateCount: number;
-  errors: Array<{ sheetName: string; rowNumber: number; message: string }>;
-}
+export type { ImportPreviewRow } from "@/lib/imports/import-types";
 
 export interface ImportCommitFile {
   fileName: string;

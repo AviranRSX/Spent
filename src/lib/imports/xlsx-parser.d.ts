@@ -15,16 +15,38 @@ export interface ParsedImportTransaction {
   identifier?: string | number;
 }
 
-export interface ParsedImportError {
+export interface ParsedImportRowIssue {
   sheetName: string;
   rowNumber: number;
-  message: string;
+  problems: string[];
 }
+
+export type ImportDetectionResult =
+  | {
+      ok: true;
+      templateType: ImportTemplateType;
+      kind: "bank" | "card";
+    }
+  | {
+      ok: false;
+      code: "unsupported" | "ambiguous" | "unreadable";
+      message: string;
+      matches: ImportTemplateType[];
+    };
+
+export const MAX_OPEN_XML_ENTRIES: number;
+export const MAX_OPEN_XML_EXPANDED_BYTES: number;
+
+export function getOpenXmlArchiveLimitIssue(
+  expandedSizes: number[]
+): "entry_count" | "expanded_size" | null;
+
+export function detectWorkbookBuffer(buffer: Buffer): Promise<ImportDetectionResult>;
 
 export function parseWorkbookBuffer(
   buffer: Buffer,
   options: { templateType: ImportTemplateType; sourceLabel: string }
 ): Promise<{
   transactions: ParsedImportTransaction[];
-  errors: ParsedImportError[];
+  rowIssues: ParsedImportRowIssue[];
 }>;

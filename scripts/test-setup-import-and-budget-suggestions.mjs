@@ -136,45 +136,157 @@ test("budget suggestions average over the selected month count", () => {
   assert.equal(result.totalBudgetSuggestion?.suggestedBudget, 4000);
 });
 
-test("setup import staging appends later file selections and clears stale previews", () => {
-  const first = staging.appendSelectedImportFiles([], [
-    { name: "feb.xlsx", lastModified: 1 },
-  ]);
-  const second = staging.appendSelectedImportFiles(first, [
-    { name: "mar.xlsx", lastModified: 2 },
+test("setup import staging stores files without manual provider metadata", () => {
+  const staged = staging.appendSelectedImportFiles([], [
+    { name: "aug.xlsx", lastModified: 1 },
   ]);
 
-  assert.equal(second.length, 2);
-  assert.deepEqual(second.map((item) => item.file.name), ["feb.xlsx", "mar.xlsx"]);
-  assert.equal(second[0].id, "feb.xlsx-1-0");
-  assert.equal(second[1].id, "mar.xlsx-2-1");
+  assert.deepEqual(staged, [
+    {
+      id: "aug.xlsx-1-0",
+      file: { name: "aug.xlsx", lastModified: 1 },
+    },
+  ]);
 });
 
-test("setup import staging totals all previewed files", () => {
-  const totals = staging.summarizeImportPreviews([
+const previewFiles = [
+  {
+    fileName: "card.xlsx",
+    kind: "card",
+    templateType: "isracard_bill",
+    rows: [
+      { id: 1, duplicate: false },
+      { id: 2, duplicate: true },
+    ],
+    duplicateCount: 1,
+    rowIssues: [
+      { sheetName: "Sheet1", rowNumber: 7, problems: ["Missing merchant"] },
+    ],
+    fileIssue: null,
+  },
+  {
+    fileName: "unknown.xlsx",
+    kind: null,
+    templateType: null,
+    rows: [],
+    duplicateCount: 0,
+    rowIssues: [],
+    fileIssue: {
+      code: "unsupported",
+      message: "Unsupported workbook format",
+      matches: [],
+    },
+  },
+];
+
+test("summarizes importable duplicate skipped and file-error counts", () => {
+  assert.deepEqual(staging.summarizeImportPreviews(previewFiles), {
+    validRows: 2,
+    duplicates: 1,
+    skippedRows: 1,
+    fileErrors: 1,
+    importableRows: 1,
+  });
+});
+
+test("commits detected valid files and omits unsupported files", () => {
+  assert.deepEqual(staging.buildImportCommitFiles(previewFiles), [
     {
-      fileName: "feb.xlsx",
+      fileName: "card.xlsx",
       kind: "card",
       templateType: "isracard_bill",
-      rows: [{ id: 1 }, { id: 2 }],
-      duplicateCount: 1,
-      errors: [],
+      rows: previewFiles[0].rows,
     },
+  ]);
+});
+
+test("formats detected providers and exact Excel row issues", () => {
+  const display = staging.buildImportPreviewDisplay([
     {
-      fileName: "mar.xlsx",
-      kind: "bank",
-      templateType: "hapoalim_bank_account",
-      rows: [{ id: 3 }],
+      fileName: "card.xlsx",
+      kind: "card",
+      templateType: "isracard_bill",
+      rows: [{ duplicate: false }],
       duplicateCount: 0,
-      errors: [{ sheetName: "Sheet1", rowNumber: 2, message: "bad" }],
+      rowIssues: [
+        {
+          sheetName: "Sheet1",
+          rowNumber: 21,
+          problems: ["Missing merchant", "Missing charged amount"],
+        },
+      ],
+      fileIssue: null,
     },
   ]);
 
-  assert.deepEqual(totals, {
-    rows: 3,
-    duplicates: 1,
-    errors: 1,
-  });
+  assert.deepEqual(display, [
+    {
+      fileName: "card.xlsx",
+      providerLabel: "Isracard",
+      sourceKindLabel: "Credit card",
+      validRows: 1,
+      duplicates: 0,
+      skippedRows: 1,
+      fileIssue: null,
+      issueLines: [
+        "Sheet1 | Excel row 21 | Missing merchant; Missing charged amount",
+      ],
+    },
+  ]);
+});
+
+test("formats unsupported workbooks without a detected source", () => {
+  const display = staging.buildImportPreviewDisplay([
+    {
+      fileName: "unknown.xlsx",
+      kind: null,
+      templateType: null,
+      rows: [],
+      duplicateCount: 0,
+      rowIssues: [],
+      fileIssue: {
+        code: "unsupported",
+        message: "Unsupported workbook format",
+        matches: [],
+      },
+    },
+  ]);
+
+  assert.deepEqual(display, [
+    {
+      fileName: "unknown.xlsx",
+      providerLabel: "Not detected",
+      sourceKindLabel: "Unknown source",
+      validRows: 0,
+      duplicates: 0,
+      skippedRows: 0,
+      fileIssue: "Unsupported workbook format",
+      issueLines: [],
+    },
+  ]);
+});
+
+test("formats ambiguous workbook matches with detected provider labels", () => {
+  const display = staging.buildImportPreviewDisplay([
+    {
+      fileName: "ambiguous.xlsx",
+      kind: null,
+      templateType: null,
+      rows: [],
+      duplicateCount: 0,
+      rowIssues: [],
+      fileIssue: {
+        code: "ambiguous",
+        message: "Ambiguous workbook format",
+        matches: ["isracard_bill", "max_bill"],
+      },
+    },
+  ]);
+
+  assert.equal(
+    display[0]?.fileIssue,
+    "Ambiguous workbook format: Isracard, Max"
+  );
 });
 
 test("setup import progress advances after each file for file-sized batches", () => {

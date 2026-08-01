@@ -56,3 +56,5 @@ next-env.d.ts
 /transactions
 # Local test scripts
 scripts/test-*
+!scripts/test-import-detection.mjs
+!scripts/test-import-preview-orchestration.mjs

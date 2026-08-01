@@ -17,6 +17,15 @@ import type {
   DataSourceMode,
 } from "./types";
 import type { TransactionSourceType } from "./transaction-source-types";
+import { buildImportCommitFiles } from "./imports/batch-staging";
+import type { ImportPreviewFile } from "./imports/import-types";
+export type {
+  ImportFileIssue,
+  ImportPreviewFile,
+  ImportPreviewRow,
+  ImportPreviewSummary,
+  ImportRowIssue,
+} from "./imports/import-types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
 
 const BASE = "";
@@ -681,50 +690,8 @@ export function startSync(
   return { cancel: () => controller.abort() };
 }
 
-export interface ImportPreviewRow {
-  accountNumber: string;
-  date: string;
-  processedDate: string;
-  originalAmount: number;
-  originalCurrency: string;
-  chargedAmount: number;
-  chargedCurrency?: string;
-  description: string;
-  memo?: string;
-  type: "normal" | "installments";
-  status: "completed" | "pending";
-  identifier?: string | number;
-  dedupHash: string;
-  duplicate: boolean;
-}
-
-export interface ImportPreviewFile {
-  fileName: string;
-  kind: ImportSourceKind;
-  templateType: ImportTemplateType;
-  rows: ImportPreviewRow[];
-  duplicateCount: number;
-  errors: Array<{ sheetName: string; rowNumber: number; message: string }>;
-}
-
-export function previewImportFiles(
-  files: Array<{
-    file: File;
-    kind: ImportSourceKind;
-    templateType: ImportTemplateType;
-  }>
-) {
+export function previewImportFiles(files: Array<{ file: File }>) {
   const form = new FormData();
-  form.set(
-    "metadata",
-    JSON.stringify(
-      files.map((item) => ({
-        fileName: item.file.name,
-        kind: item.kind,
-        templateType: item.templateType,
-      }))
-    )
-  );
   for (const item of files) form.append("files", item.file);
   return fetchJSON<{ success: boolean; files: ImportPreviewFile[] }>(
     "/api/imports/preview",
@@ -746,12 +713,7 @@ export function commitImportPreview(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      files: files.map((file) => ({
-        fileName: file.fileName,
-        kind: file.kind,
-        templateType: file.templateType,
-        rows: file.rows,
-      })),
+      files: buildImportCommitFiles(files),
       categorize: options.categorize,
     }),
   });

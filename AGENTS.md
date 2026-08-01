@@ -36,6 +36,8 @@ Key priorities, in order:
 
 ## Codex Workflow
 
+- Never create a Git commit unless the user explicitly commands you to commit.
+- When the user explicitly commands a commit, write a clear conventional commit subject and a detailed commit body that explains what changed and why.
 - Inspect the exact file, function, command, or error the user names before generalizing.
 - Prefer direct edits and runnable verification over conceptual advice.
 - Preserve existing schema and user-facing terminology unless the user explicitly asks for a rename.

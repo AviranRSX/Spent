@@ -1,5 +1,11 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const JSZip = require("jszip");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const templateDetector = require("./template-detector.js");
+const { detectImportTemplate, normalizeImportHeader } = templateDetector;
+
+const MAX_OPEN_XML_ENTRIES = 1_000;
+const MAX_OPEN_XML_EXPANDED_BYTES = 100 * 1024 * 1024;
 
 const IMPORT_TEMPLATE_TYPES = [
   "isracard_bill",
@@ -62,6 +68,9 @@ function dateToISO(value, formats) {
     let year = Number(match.groups.year);
     if (year < 100) year += 2000;
     if (!day || !month || !year) return null;
+    if (month > 12 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()) {
+      return null;
+    }
     return `${year.toString().padStart(4, "0")}-${month
       .toString()
       .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
@@ -84,10 +93,24 @@ function textIncludesAll(values, needles) {
 
 function findHeaderRow(sheet, needles) {
   for (let rowNo = 1; rowNo <= sheet.rowCount; rowNo += 1) {
-    const texts = rowTexts(sheet.getRow(rowNo));
+    const texts = rowTexts(sheet.getRow(rowNo)).map(normalizeImportHeader);
     if (textIncludesAll(texts, needles)) return rowNo;
   }
   return null;
+}
+
+function rowHasHeaders(values, headers) {
+  const normalized = new Set(values.map(normalizeImportHeader));
+  return headers.every((header) => normalized.has(header));
+}
+
+function headerColumnMap(row) {
+  const columns = new Map();
+  rowValues(row).forEach((value, index) => {
+    const header = normalizeImportHeader(value);
+    if (header) columns.set(header, index);
+  });
+  return columns;
 }
 
 function signedCardAmount(value) {
@@ -100,13 +123,50 @@ function normalizeDescription(parts) {
   return parts.map(asText).filter(Boolean).join(" · ").replace(/\s+/g, " ").trim();
 }
 
-function error(sheetName, rowNumber, message) {
-  return { sheetName, rowNumber, message };
+function quotedValue(value) {
+  return `"${asText(value)}"`;
+}
+
+function requiredTextProblem(value, label) {
+  return asText(value) ? null : `Missing ${label}`;
+}
+
+function requiredDateProblem(value, parsed, label, expected) {
+  if (!asText(value)) return `Missing ${label}`;
+  return parsed ? null : `Invalid ${label}: ${quotedValue(value)} (expected ${expected})`;
+}
+
+function requiredAmountProblem(value, parsed, label) {
+  if (!asText(value)) return `Missing ${label}`;
+  return parsed == null ? `Invalid ${label}: ${quotedValue(value)} is not a number` : null;
+}
+
+function requiredDebitOrCreditProblem(debitValue, debit, creditValue, credit) {
+  if (debit != null || credit != null) return null;
+  if (!asText(debitValue) && !asText(creditValue)) return "Missing debit or credit amount";
+  const invalidValue = asText(debitValue) ? debitValue : creditValue;
+  return `Invalid debit or credit amount: ${quotedValue(invalidValue)} is not a number`;
+}
+
+function addRowIssue(rowIssues, sheetName, rowNumber, problems) {
+  const present = problems.filter(Boolean);
+  if (present.length > 0) {
+    rowIssues.push({ sheetName, rowNumber, problems: present });
+    return true;
+  }
+  return false;
+}
+
+function isTotalRow(values) {
+  return values.some((value) => {
+    const text = asText(value);
+    return text.includes("סך") || text.includes('סה"כ');
+  });
 }
 
 function parseIsracard(workbook, sourceLabel) {
   const transactions = [];
-  const errors = [];
+  const rowIssues = [];
   for (const sheet of workbook.worksheets) {
     const headerRow = findHeaderRow(sheet, ["תאריך רכישה", "שם בית עסק", "סכום חיוב"]);
     if (!headerRow) continue;
@@ -114,27 +174,33 @@ function parseIsracard(workbook, sourceLabel) {
     const accountNumber = accountLine?.match(/\d{4,}/)?.[0] ?? sourceLabel;
     for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
       const vals = rowValues(sheet.getRow(rowNo));
-      const date = dateToISO(vals[0], [
+      if (
+        rowHasHeaders(vals, [
+          "תאריך רכישה",
+          "שם בית עסק",
+          "סכום עסקה",
+          "סכום חיוב",
+        ])
+      ) {
+        continue;
+      }
+      const rawDate = vals[0];
+      const date = dateToISO(rawDate, [
         { re: /^(?<day>\d{1,2})\.(?<month>\d{1,2})\.(?<year>\d{2,4})$/ },
       ]);
       const description = asText(vals[1]);
-      if (vals.some((value) => {
-        const text = asText(value);
-        return text.includes("סך") || text.includes('סה"כ');
-      })) {
-        continue;
-      }
-      if (!date && !description) continue;
-      if (!date || !description) {
-        errors.push(error(sheet.name, rowNo, "Missing date or merchant"));
-        continue;
-      }
-      const chargedAmount = signedCardAmount(vals[4]);
       const originalAmount = signedCardAmount(vals[2]);
-      if (chargedAmount == null || originalAmount == null) {
-        errors.push(error(sheet.name, rowNo, "Missing amount"));
-        continue;
-      }
+      const chargedAmount = signedCardAmount(vals[4]);
+      if (isTotalRow(vals)) continue;
+      const hasTransactionEvidence = Boolean(description || asText(vals[2]) || asText(vals[4]));
+      if (!hasTransactionEvidence) continue;
+      const problems = [
+        requiredDateProblem(rawDate, date, "purchase date", "DD.MM.YYYY"),
+        requiredTextProblem(description, "merchant"),
+        requiredAmountProblem(vals[2], originalAmount, "original amount"),
+        requiredAmountProblem(vals[4], chargedAmount, "charged amount"),
+      ];
+      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
       transactions.push({
         accountNumber,
         date,
@@ -151,12 +217,12 @@ function parseIsracard(workbook, sourceLabel) {
       });
     }
   }
-  return { transactions, errors };
+  return { transactions, rowIssues };
 }
 
 function parseBankAccount(workbook, sourceLabel) {
   const transactions = [];
-  const errors = [];
+  const rowIssues = [];
   for (const sheet of workbook.worksheets) {
     const headerRow = findHeaderRow(sheet, ["תאריך", "הפעולה", "חובה", "זכות"]);
     if (!headerRow) continue;
@@ -164,16 +230,24 @@ function parseBankAccount(workbook, sourceLabel) {
     const accountNumber = accountLine.match(/\d{2}-\d{3}-\d{5}/)?.[0] ?? sourceLabel;
     for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
       const vals = rowValues(sheet.getRow(rowNo));
-      const date = dateToISO(vals[0], []);
+      const rawDate = vals[0];
+      const date = dateToISO(rawDate, []);
       const action = asText(vals[1]);
-      if (!date && !action) continue;
       const debit = asNumber(vals[4]);
       const credit = asNumber(vals[5]);
       const rawAmount = credit != null && credit !== 0 ? credit : debit != null ? -Math.abs(debit) : null;
-      if (!date || !action || rawAmount == null) {
-        errors.push(error(sheet.name, rowNo, "Missing date, action, or amount"));
-        continue;
-      }
+      if (isTotalRow(vals)) continue;
+      const hasAmount = Boolean(asText(vals[4]) || asText(vals[5]));
+      const hasTransactionEvidence = Boolean(
+        (asText(rawDate) && action) || (action && hasAmount) || (asText(rawDate) && hasAmount)
+      );
+      if (!hasTransactionEvidence) continue;
+      const problems = [
+        requiredDateProblem(rawDate, date, "transaction date", "Excel date"),
+        requiredTextProblem(action, "action"),
+        requiredDebitOrCreditProblem(vals[4], debit, vals[5], credit),
+      ];
+      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
       const description = normalizeDescription([action, vals[2], vals[8], vals[9]]);
       transactions.push({
         accountNumber,
@@ -191,20 +265,21 @@ function parseBankAccount(workbook, sourceLabel) {
       });
     }
   }
-  return { transactions, errors };
+  return { transactions, rowIssues };
 }
 
 function parseLeumiBankAccount(workbook, sourceLabel) {
   const transactions = [];
-  const errors = [];
+  const rowIssues = [];
   const allText = workbook.rows.flat().join(" ");
   const accountNumber = allText.match(/(\d{3}-\d{6}\/\d{2})/)?.[1] ?? sourceLabel;
   for (const sheet of workbook.worksheets) {
     const headerRow = findHeaderRow(sheet, ["תאריך", "תיאור", "בחובה", "בזכות"]);
     if (!headerRow) continue;
     for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
-      const vals = rowValues(sheet.getRow(rowNo)).filter((value) => asText(value));
-      const date = dateToISO(vals[0], [
+      const vals = rowValues(sheet.getRow(rowNo));
+      const rawDate = vals[0];
+      const date = dateToISO(rawDate, [
         { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
       ]);
       const processedDate =
@@ -212,14 +287,21 @@ function parseLeumiBankAccount(workbook, sourceLabel) {
           { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
         ]) ?? date;
       const description = asText(vals[2]);
-      if (!date && !description) continue;
       const debit = asNumber(vals[4]);
       const credit = asNumber(vals[5]);
       const rawAmount = credit != null && credit !== 0 ? credit : debit != null ? -Math.abs(debit) : null;
-      if (!date || !description || rawAmount == null) {
-        errors.push(error(sheet.name, rowNo, "Missing date, description, or amount"));
-        continue;
-      }
+      if (isTotalRow(vals)) continue;
+      const hasAmount = Boolean(asText(vals[4]) || asText(vals[5]));
+      const hasTransactionEvidence = Boolean(
+        (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
+      );
+      if (!hasTransactionEvidence) continue;
+      const problems = [
+        requiredDateProblem(rawDate, date, "transaction date", "DD/MM/YYYY"),
+        requiredTextProblem(description, "description"),
+        requiredDebitOrCreditProblem(vals[4], debit, vals[5], credit),
+      ];
+      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
       transactions.push({
         accountNumber,
         date,
@@ -236,74 +318,135 @@ function parseLeumiBankAccount(workbook, sourceLabel) {
       });
     }
   }
-  return { transactions, errors };
+  return { transactions, rowIssues };
 }
 
 function parseCalBill(workbook, sourceLabel) {
   const transactions = [];
-  const errors = [];
+  const rowIssues = [];
   for (const sheet of workbook.worksheets) {
-    const headerRow = findHeaderRow(sheet, ["תאריך", "שם בית עסק", "סכום", "חיוב"]);
+    const headerRow = findHeaderRow(sheet, [
+      "תאריך עסקה",
+      "שם בית עסק",
+      "סכום בש\"ח",
+      "מועד חיוב",
+    ]);
     if (!headerRow) continue;
+    const columns = headerColumnMap(sheet.getRow(headerRow));
+    const dateColumn = columns.get("תאריך עסקה");
+    const descriptionColumn = columns.get("שם בית עסק");
+    const amountColumn = columns.get("סכום בש\"ח");
+    const billingDateColumn = columns.get("מועד חיוב");
+    const transactionTypeColumn = columns.get("סוג עסקה");
+    const notesColumn = columns.get("הערות");
+    if (
+      dateColumn == null ||
+      descriptionColumn == null ||
+      amountColumn == null ||
+      billingDateColumn == null
+    ) {
+      continue;
+    }
     const accountLine = rowTexts(sheet.getRow(1)).join(" ");
-    const accountNumber = accountLine.match(/מסתיים ב-(\d{4,})/)?.[1] ?? sourceLabel;
-    const billingLine = rowTexts(sheet.getRow(3)).join(" ");
-    const billingDateText = billingLine.match(/לחיוב ב-(\d{1,2}\/\d{1,2}\/\d{2,4})/)?.[1];
-    const billingDate = billingDateText
-      ? dateToISO(billingDateText, [
-          { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
-        ])
-      : null;
+    const accountNumber =
+      accountLine.match(/מסתיים ב-(\d{4,})/)?.[1] ??
+      accountLine.match(/כרטיס.*?(\d{4})\b/)?.[1] ??
+      sourceLabel;
     for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
       const vals = rowValues(sheet.getRow(rowNo));
-      const date = dateToISO(vals[0], []);
-      const description = asText(vals[1]);
-      if (!date && !description) continue;
-      const chargedAmount = signedCardAmount(vals[3]);
-      const originalAmount = signedCardAmount(vals[2]);
-      if (!date || !description || chargedAmount == null || originalAmount == null) {
-        errors.push(error(sheet.name, rowNo, "Missing date, merchant, or amount"));
+      if (
+        rowHasHeaders(vals, [
+          "תאריך עסקה",
+          "שם בית עסק",
+          "סכום בש\"ח",
+          "מועד חיוב",
+        ])
+      ) {
         continue;
       }
+      const rawDate = vals[dateColumn];
+      const date = dateToISO(rawDate, []);
+      const description = asText(vals[descriptionColumn]);
+      const rawAmount = vals[amountColumn];
+      const originalAmount = signedCardAmount(rawAmount);
+      const chargedAmount = signedCardAmount(rawAmount);
+      const billedDate = dateToISO(vals[billingDateColumn], []);
+      const transactionType =
+        transactionTypeColumn == null ? "" : asText(vals[transactionTypeColumn]);
+      const notes = notesColumn == null ? "" : asText(vals[notesColumn]);
+      if (isTotalRow(vals)) continue;
+      const hasAmount = Boolean(asText(rawAmount));
+      const hasTransactionEvidence = Boolean(
+        (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
+      );
+      if (!hasTransactionEvidence) continue;
+      const problems = [
+        requiredDateProblem(rawDate, date, "transaction date", "Excel date"),
+        requiredTextProblem(description, "merchant"),
+        requiredAmountProblem(rawAmount, originalAmount, "original amount"),
+        requiredAmountProblem(rawAmount, chargedAmount, "charged amount"),
+      ];
+      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
       transactions.push({
         accountNumber,
         date,
-        processedDate: billingDate ?? date,
+        processedDate: billedDate ?? date,
         originalAmount,
         originalCurrency: "ILS",
         chargedAmount,
         chargedCurrency: "ILS",
         description,
-        memo: normalizeDescription([vals[4], vals[5], vals[6]]) || undefined,
-        type: asText(vals[4]).includes("תשלומים") ? "installments" : "normal",
-        status: "completed",
+        memo: normalizeDescription([transactionType, notes]) || undefined,
+        type: transactionType.includes("תשלומים") ? "installments" : "normal",
+        status: billedDate ? "completed" : "pending",
       });
     }
   }
-  return { transactions, errors };
+  return { transactions, rowIssues };
 }
 
 function parseCreditCardExport(workbook, sourceLabel) {
   const transactions = [];
-  const errors = [];
+  const rowIssues = [];
   for (const sheet of workbook.worksheets) {
     const headerRow = findHeaderRow(sheet, ["תאריך עסקה", "שם בית העסק", "סכום חיוב"]);
     if (!headerRow) continue;
     for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
       const vals = rowValues(sheet.getRow(rowNo));
-      const date = dateToISO(vals[0], [
+      const rawDate = vals[0];
+      const date = dateToISO(rawDate, [
         { re: /^(?<day>\d{1,2})-(?<month>\d{1,2})-(?<year>\d{2,4})$/ },
         { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
       ]);
       const description = asText(vals[1]);
-      if (!date && !description) continue;
-      if (description === "סך הכל") continue;
-      const chargedAmount = signedCardAmount(vals[5]);
-      const originalAmount = signedCardAmount(vals[7]);
-      if (!date || !description || chargedAmount == null || originalAmount == null) {
-        errors.push(error(sheet.name, rowNo, "Missing date, merchant, or amount"));
-        continue;
-      }
+      const rawChargedAmount = vals[5];
+      const rawOriginalAmount = vals[7];
+      const originalAmount = signedCardAmount(rawOriginalAmount);
+      const chargedAmount =
+        signedCardAmount(rawChargedAmount) ??
+        (asText(rawChargedAmount) ? null : originalAmount);
+      const originalCurrency = currencyCode(vals[8]);
+      const chargedCurrency = asText(vals[6])
+        ? currencyCode(vals[6])
+        : originalCurrency;
+      if (isTotalRow(vals)) continue;
+      const hasAmount = Boolean(asText(rawChargedAmount) || asText(rawOriginalAmount));
+      const hasTransactionEvidence = Boolean(
+        (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
+      );
+      if (!hasTransactionEvidence) continue;
+      const chargedAmountProblem = asText(rawChargedAmount)
+        ? requiredAmountProblem(rawChargedAmount, chargedAmount, "charged amount")
+        : originalAmount == null
+          ? "Missing charged amount"
+          : null;
+      const problems = [
+        requiredDateProblem(rawDate, date, "transaction date", "DD-MM-YYYY or DD/MM/YYYY"),
+        requiredTextProblem(description, "merchant"),
+        chargedAmountProblem,
+        requiredAmountProblem(rawOriginalAmount, originalAmount, "original amount"),
+      ];
+      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
       transactions.push({
         accountNumber: asText(vals[3]) || sourceLabel,
         date,
@@ -313,9 +456,9 @@ function parseCreditCardExport(workbook, sourceLabel) {
             { re: /^(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{2,4})$/ },
           ]) ?? date,
         originalAmount,
-        originalCurrency: currencyCode(vals[8]),
+        originalCurrency,
         chargedAmount,
-        chargedCurrency: currencyCode(vals[6]),
+        chargedCurrency,
         description,
         memo: asText(vals[10]) || undefined,
         type: asText(vals[4]).includes("חודשי") ? "installments" : "normal",
@@ -324,7 +467,7 @@ function parseCreditCardExport(workbook, sourceLabel) {
       });
     }
   }
-  return { transactions, errors };
+  return { transactions, rowIssues };
 }
 
 async function parseWorkbookBuffer(buffer, options) {
@@ -379,6 +522,44 @@ function parseSharedStrings(xml) {
   return [...xml.matchAll(/<[^:>]*:?si\b[^>]*>([\s\S]*?)<\/[^:>]*:?si>/g)].map((m) =>
     extractTextNodes(m[1])
   );
+}
+
+function resolveWorkbookTarget(target) {
+  const normalizedTarget = target.replace(/\\/g, "/");
+  const combined = normalizedTarget.startsWith("/")
+    ? normalizedTarget.slice(1)
+    : `xl/${normalizedTarget}`;
+  const parts = [];
+  for (const part of combined.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+  const resolved = parts.join("/");
+  return /^xl\/worksheets\/[^/]+\.xml$/i.test(resolved) ? resolved : null;
+}
+
+function parseWorkbookSheetReferences(workbookXml, relationshipsXml) {
+  if (!workbookXml || !relationshipsXml) return [];
+  const targets = new Map();
+  for (const match of relationshipsXml.matchAll(
+    /<[^:>]*:?Relationship\b([^>]*)\/?\s*>/gi
+  )) {
+    const type = attr(match[1], "Type");
+    const target = resolveWorkbookTarget(attr(match[1], "Target"));
+    if (!type.endsWith("/worksheet") || !target) continue;
+    targets.set(attr(match[1], "Id"), target);
+  }
+  const references = [];
+  for (const match of workbookXml.matchAll(/<[^:>]*:?sheet\b([^>]*)\/?\s*>/gi)) {
+    const path = targets.get(attr(match[1], "r:id"));
+    if (!path) continue;
+    references.push({ path, name: attr(match[1], "name") || null });
+  }
+  return references;
 }
 
 function parseSheet(xml, name, sharedStrings) {
@@ -459,26 +640,96 @@ function readHtmlWorkbook(buffer) {
   };
 }
 
+function getOpenXmlArchiveLimitIssue(expandedSizes) {
+  if (expandedSizes.length > MAX_OPEN_XML_ENTRIES) return "entry_count";
+  let total = 0;
+  for (const size of expandedSizes) {
+    if (!Number.isFinite(size) || size < 0) return "expanded_size";
+    total += size;
+    if (total > MAX_OPEN_XML_EXPANDED_BYTES) return "expanded_size";
+  }
+  return null;
+}
+
+function openXmlEntryExpandedSize(entry) {
+  if (entry.dir) return 0;
+  const size = entry._data?.uncompressedSize;
+  return typeof size === "number" ? size : Number.NaN;
+}
+
 async function readOpenXmlWorkbook(buffer) {
   const zip = await JSZip.loadAsync(buffer);
+  const archiveLimitIssue = getOpenXmlArchiveLimitIssue(
+    Object.values(zip.files).map(openXmlEntryExpandedSize)
+  );
+  if (archiveLimitIssue) {
+    throw new Error("Workbook archive exceeds the supported limits");
+  }
   const sharedStrings = parseSharedStrings(
     zip.file("xl/sharedStrings.xml")
       ? await zip.file("xl/sharedStrings.xml").async("text")
       : ""
   );
   const sheetFiles = Object.keys(zip.files)
-    .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+    .filter((name) => /^xl\/worksheets\/[^/]+\.xml$/i.test(name))
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const workbookXml = zip.file("xl/workbook.xml")
+    ? await zip.file("xl/workbook.xml").async("text")
+    : "";
+  const relationshipsXml = zip.file("xl/_rels/workbook.xml.rels")
+    ? await zip.file("xl/_rels/workbook.xml.rels").async("text")
+    : "";
+  const metadata = parseWorkbookSheetReferences(workbookXml, relationshipsXml);
+  const orderedSheets = [];
+  const referencedPaths = new Set();
+  for (const reference of metadata) {
+    if (!zip.file(reference.path) || referencedPaths.has(reference.path)) continue;
+    referencedPaths.add(reference.path);
+    orderedSheets.push(reference);
+  }
+  for (const path of sheetFiles) {
+    if (referencedPaths.has(path)) continue;
+    orderedSheets.push({ path, name: null });
+  }
   const worksheets = [];
-  for (let i = 0; i < sheetFiles.length; i += 1) {
-    const path = sheetFiles[i];
+  for (let i = 0; i < orderedSheets.length; i += 1) {
+    const { path, name } = orderedSheets[i];
     const xml = await zip.file(path).async("text");
-    worksheets.push(parseSheet(xml, `Sheet${i + 1}`, sharedStrings));
+    worksheets.push(parseSheet(xml, name || `Sheet${i + 1}`, sharedStrings));
   }
   return { worksheets };
 }
 
+async function inspectWorkbookBuffer(buffer) {
+  const prefix = new TextDecoder("utf-8")
+    .decode(buffer.subarray(0, Math.min(buffer.length, 4096)))
+    .replace(/^\uFEFF/, "")
+    .trimStart();
+  if (/<(?:html|table|tr)\b/i.test(prefix)) {
+    return { container: "html", workbook: readHtmlWorkbook(buffer) };
+  }
+  return { container: "open_xml", workbook: await readOpenXmlWorkbook(buffer) };
+}
+
+async function detectWorkbookBuffer(buffer) {
+  try {
+    const inspected = await inspectWorkbookBuffer(buffer);
+    return detectImportTemplate(inspected.container, inspected.workbook);
+  } catch {
+    return {
+      ok: false,
+      code: "unreadable",
+      message: "Workbook could not be read",
+      matches: [],
+    };
+  }
+}
+
 module.exports = {
   IMPORT_TEMPLATE_TYPES,
+  MAX_OPEN_XML_ENTRIES,
+  MAX_OPEN_XML_EXPANDED_BYTES,
+  detectWorkbookBuffer,
+  getOpenXmlArchiveLimitIssue,
   parseWorkbookBuffer,
 };

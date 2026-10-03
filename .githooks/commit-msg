@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks commit messages containing values from /transactions/ or /data/. See AGENTS.md.
+exec node scripts/check-sensitive-data.mjs --message "$1"

@@ -13,6 +13,8 @@
     "debug:import-classification": "node --conditions react-server --experimental-transform-types scripts/debug-import-classification.mjs",
     "security:audit": "npm audit --omit=dev",
     "security:outdated": "npm outdated",
+    "security:sensitive-data": "node scripts/check-sensitive-data.mjs --all",
+    "hooks:install": "git config core.hooksPath .githooks",
     "docs:screenshots": "node scripts/capture-docs-screenshots.mjs",
     "setup": "node scripts/setup.mjs",
     "uninstall": "node scripts/uninstall.mjs",

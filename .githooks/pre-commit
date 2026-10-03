@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks commits containing values from /transactions/ or /data/. See AGENTS.md.
+exec node scripts/check-sensitive-data.mjs

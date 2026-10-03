@@ -48,6 +48,7 @@ Treat all of these as sensitive: account numbers, card last-4 digits, transactio
 - **Screenshots.** Capture only from a workspace seeded with fake data, never from the live database.
 - **Logs and debug output.** Never paste real rows into anything that gets committed, shared, or published as an artifact.
 - **Before every commit,** read the diff and look for anything that came from a real export. If real data is already in a commit, stop and tell the user. Removing it needs a history rewrite and force push, which only the user can approve.
+- **Commit hooks.** `npm run hooks:install` enables `.githooks/`, which runs `scripts/check-sensitive-data.mjs` on every commit. It fingerprints `/transactions/` and the databases in `/data/`, blocks staged lines and commit messages that contain those values, and prints matches masked. `npm run security:sensitive-data` scans the whole tree. Never bypass a block with `SPENT_ALLOW_SENSITIVE=1` or `--no-verify` unless the user confirms it is a false positive.
 
 Import tests build every provider's export from synthetic builders in `scripts/import-workbook-test-helpers.mjs` (`PROVIDER_FIXTURES`). They mirror each real layout with invented values. When a new export variant appears, add a builder there instead of pointing a test at a real file.
 

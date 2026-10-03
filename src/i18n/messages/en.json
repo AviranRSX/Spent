@@ -292,6 +292,8 @@
       "assignedToast": "{count, plural, one {# transaction} other {# transactions}} added to {name}",
       "removedToast": "Trip choices removed",
       "notTripToast": "{count, plural, one {# transaction} other {# transactions}} marked as not a trip",
+      "transfersOnly": "Transfers can't be added to a trip. Select a purchase or a refund.",
+      "transfersSkipped": "{count, plural, one {# transfer skipped} other {# transfers skipped}}",
       "selectRow": "Select transaction",
       "selectPage": "Select all on this page"
     },

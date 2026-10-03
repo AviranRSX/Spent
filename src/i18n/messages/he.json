@@ -292,6 +292,8 @@
       "assignedToast": "{count, plural, one {תנועה אחת נוספה} other {# תנועות נוספו}} לטיול {name}",
       "removedToast": "הבחירות הוסרו",
       "notTripToast": "{count, plural, one {תנועה אחת סומנה} other {# תנועות סומנו}} כלא טיול",
+      "transfersOnly": "אי אפשר לשייך העברות לטיול. בחרו רכישה או זיכוי.",
+      "transfersSkipped": "{count, plural, one {העברה אחת דולגה} other {# העברות דולגו}}",
       "selectRow": "בחירת תנועה",
       "selectPage": "בחירת כל התנועות בעמוד"
     },
@@ -801,7 +803,7 @@
     "Investment Income": "הכנסה מהשקעות",
     "Refunds & Reimbursements": "החזרים והשבות",
     "Food": "אוכל",
-    "Transportation": "תחבורה ונסיעות",
+    "Transportation": "תחבורה",
     "Lifestyle": "סגנון חיים",
     "Home & Bills": "בית וחשבונות",
     "Health & Family": "בריאות ומשפחה",

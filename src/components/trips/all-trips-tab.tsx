@@ -8,7 +8,7 @@ import { Check, Pencil, Plane, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { updateTrip } from "@/lib/api";
-import { formatTripAmount, formatTripDates } from "@/lib/trips/format";
+import { formatTripAmount, formatTripDates, isolateLtr } from "@/lib/trips/format";
 import type { TripStatus, TripSummary, TripsOverview } from "@/lib/trips/types";
 import type { Locale } from "@/i18n/routing";
 import { TripFormDialog } from "./trip-form-dialog";
@@ -146,10 +146,10 @@ function TripCard({ trip, onOpen }: { trip: TripSummary; onOpen: () => void }) {
       </div>
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
         <span className="font-serif text-3xl tracking-tight">
-          {formatTripAmount(trip.total, locale)}
+          <span dir="ltr">{formatTripAmount(trip.total, locale)}</span>
         </span>
         <span className="pb-1 text-sm text-muted-foreground">
-          {t("perDayValue", { amount: formatTripAmount(trip.perDay, locale) })}
+          {t("perDayValue", { amount: isolateLtr(formatTripAmount(trip.perDay, locale)) })}
         </span>
       </div>
     </button>
@@ -178,7 +178,7 @@ function SuggestedTripCard({ trip, busy, onConfirm, onDismiss, onEdit }: Suggest
         <p className="text-sm text-muted-foreground">
           {t("transactionsCount", { count: trip.memberCount })}
           {" · "}
-          {formatTripAmount(trip.total, locale)}
+          <span dir="ltr">{formatTripAmount(trip.total, locale)}</span>
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">

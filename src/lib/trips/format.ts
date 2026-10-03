@@ -28,15 +28,35 @@ export function formatTripDay(day: string, locale: Locale): string {
   }).format(utcNoon(day));
 }
 
+/**
+ * Wraps text in Unicode left-to-right isolates, for amounts interpolated into
+ * a translated string where a dir="ltr" element cannot be used.
+ */
+export function isolateLtr(text: string): string {
+  return String.fromCharCode(0x2066) + text + String.fromCharCode(0x2069);
+}
+
+/**
+ * Wraps user text (a merchant name) in a first-strong isolate so a Latin name
+ * inside a Hebrew sentence keeps its own direction.
+ */
+export function isolateText(text: string): string {
+  return String.fromCharCode(0x2068) + text + String.fromCharCode(0x2069);
+}
+
 /** ILS amount that keeps its sign (formatCurrency drops it). */
 export function formatTripAmount(amount: number, locale: Locale): string {
   const formatted = formatCurrency(amount, "ILS", locale);
   return amount < 0 ? `-${formatted}` : formatted;
 }
 
-export function formatOriginalAmount(amount: number, currency: string, locale: Locale): string {
+/**
+ * Foreign amounts use a fixed Latin locale in both languages, like the app's
+ * ILS formatting: the symbol leads ("¥48,000") and no RTL marks are emitted.
+ */
+export function formatOriginalAmount(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(bcp(locale), {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       maximumFractionDigits: 2,

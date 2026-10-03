@@ -10,9 +10,9 @@ export interface NeedsAttentionRow {
 }
 
 /**
- * Rows for the Needs attention card, in display order. Adding a row (for
- * example the trips queue) means adding an id here and its icon and label
- * in the card.
+ * Rows for the Needs attention card, in display order: the three review
+ * queues, then the needs-a-trip queue. Adding a row means adding an id here
+ * and its icon and label in the card.
  */
 export function buildNeedsAttentionRows(
   data: HomeNeedsAttention,

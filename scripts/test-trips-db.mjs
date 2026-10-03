@@ -503,8 +503,11 @@ test("re-categorize targets the trip's AI-labeled Travel members only", () => {
     { date: "2026-04-11", currency: "Kč", chargedAmount: -900, description: "Demo Hotel", categoryId: travel.id, categorySource: "user" },
     { date: "2026-04-12", currency: "Kč", chargedAmount: -80, description: "Demo Bistro", categoryId: restaurants.id },
     { date: "2026-06-01", currency: "ILS", chargedAmount: -50, description: "Demo Local Tour", categoryId: travel.id },
+    { date: "2026-04-13", currency: "Kč", chargedAmount: 60, description: "Demo Tour Refund", categoryId: travel.id, kind: "income" },
   ]);
 
+  const detail = tripsQueries.getTripDetail(ws.id, trip.id);
+  assert.ok(detail.members.some((m) => m.description === "Demo Tour Refund"), "income Travel row is a member");
   assert.deepEqual(tripsQueries.getTravelRecategorizeIds(ws.id, trip.id), [aiTravel]);
   assert.equal(tripsQueries.getTripDetail(ws.id, trip.id).travelRecategorizableCount, 1);
   assert.equal(tripsQueries.getTravelRecategorizeIds(other.id, trip.id), null);

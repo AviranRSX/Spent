@@ -66,7 +66,7 @@ export function TripDailyChart({ points }: { points: TripDailyPoint[] }) {
               );
             }}
           />
-          <Bar dataKey="amount" fill="var(--chart-5)" radius={[4, 4, 0, 0]} maxBarSize={24} />
+          <Bar dataKey="amount" fill="var(--chart-expense)" radius={[4, 4, 0, 0]} maxBarSize={24} />
         </BarChart>
       </ResponsiveContainer>
     </figure>

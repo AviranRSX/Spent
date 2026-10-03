@@ -17,7 +17,7 @@ import {
 import { assignTransactionsToTrip } from "@/lib/api";
 import { translateCategoryName } from "@/lib/i18n-data";
 import { draftTripFromTransactions } from "@/lib/trips/draft";
-import { formatTripDates } from "@/lib/trips/format";
+import { formatTripDates, isolateText } from "@/lib/trips/format";
 import type { TripRef } from "@/lib/trips/types";
 import type { TransactionWithCategory } from "@/lib/types";
 import type { Locale } from "@/i18n/routing";
@@ -79,7 +79,7 @@ export function TripCategoryPrompt({
           <DialogTitle className="font-serif text-2xl tracking-tight">{t("prompt.title")}</DialogTitle>
           <DialogDescription>
             {t("prompt.body", {
-              description: transaction.description,
+              description: isolateText(transaction.description),
               category: translateCategoryName(categoryName, tCat),
             })}
           </DialogDescription>

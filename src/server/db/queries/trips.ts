@@ -319,11 +319,9 @@ export function getTripDetail(workspaceId: number, id: number): TripDetail | nul
       categoryColor: m.categoryColor,
       categorySource: m.categorySource,
       reason: m.reason,
-      phase: tripPhase(m.date, trip.startDate),
+      phase: tripPhase(m.date, trip.startDate, m.reason),
     })),
-    travelRecategorizableCount: members.filter(
-      (m) => m.categoryName === "Travel" && m.categorySource !== "user"
-    ).length,
+    travelRecategorizableCount: members.filter(isTravelRecategorizable).length,
   };
 }
 
@@ -470,6 +468,14 @@ export function getTransactionTripInfo(
 }
 
 /**
+ * Only expense rows: re-categorization sends the rows as expenses, so an
+ * income row labeled Travel must not be counted or sent.
+ */
+function isTravelRecategorizable(m: MemberRow): boolean {
+  return m.kind === "expense" && m.categoryName === "Travel" && m.categorySource !== "user";
+}
+
+/**
  * Trip members still labeled Travel by the AI. User-chosen categories are
  * skipped because batchUpdateCategories never overwrites them anyway.
  */
@@ -481,6 +487,6 @@ export function getTravelRecategorizeIds(
   const trip = state.trips.find((t) => t.id === tripId);
   if (!trip) return null;
   return membersFor(state, trip)
-    .filter((m) => m.categoryName === "Travel" && m.categorySource !== "user")
+    .filter(isTravelRecategorizable)
     .map((m) => m.id);
 }

@@ -8,6 +8,7 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { detectTrips, getTrips } from "@/lib/api";
 import { AllTripsTab } from "./all-trips-tab";
 import { NeedsTripTab } from "./needs-trip-tab";
@@ -42,13 +43,18 @@ export function TripsPage() {
     runDetection();
   }, [runDetection]);
 
-  const confirmed = overviewQuery.data?.confirmed ?? [];
-  const needsTripCount = overviewQuery.data?.needsTripCount ?? 0;
+  // The sidebar shares this query and can fill the cache before this boundary
+  // hydrates, so render nothing from it until hydration matches the server.
+  const hydrated = useIsHydrated();
+  const overview = hydrated ? overviewQuery.data : undefined;
+  const overviewPending = !hydrated || overviewQuery.isPending;
+  const confirmed = overview?.confirmed ?? [];
+  const needsTripCount = overview?.needsTripCount ?? 0;
   const tripParam = searchParams.get("trip");
   const tabParam = searchParams.get("tab");
 
   let activeTab = ALL_TAB;
-  if (tripParam && (overviewQuery.isPending || confirmed.some((trip) => String(trip.id) === tripParam))) {
+  if (tripParam && (overviewPending || confirmed.some((trip) => String(trip.id) === tripParam))) {
     activeTab = `trip-${tripParam}`;
   } else if (tabParam === NEEDS_TAB) {
     activeTab = NEEDS_TAB;
@@ -99,8 +105,8 @@ export function TripsPage() {
 
           <TabsContent value={ALL_TAB} className="pt-4">
             <AllTripsTab
-              overview={overviewQuery.data}
-              loading={overviewQuery.isPending}
+              overview={overview}
+              loading={overviewPending}
               onOpenTrip={(id) => selectTab(tripTab(id))}
               onCreate={() => setCreating(true)}
             />

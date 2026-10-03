@@ -89,7 +89,9 @@ function MemberGroup({
                 {formatTripDay(row.date, locale)}
               </span>
               <div className="min-w-0 flex-1 space-y-1">
-                <div className="truncate text-sm font-medium">{row.description}</div>
+                <div dir="auto" className="w-fit max-w-full truncate text-sm font-medium">
+                  {row.description}
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                   <Badge
                     variant="outline"
@@ -126,7 +128,7 @@ function MemberGroup({
                 {row.originalCurrency !== "ILS" ? (
                   <div className="text-xs tabular-nums text-muted-foreground">
                     <span dir="ltr">
-                      {formatOriginalAmount(row.originalAmount, row.originalCurrency, locale)}
+                      {formatOriginalAmount(row.originalAmount, row.originalCurrency)}
                     </span>
                   </div>
                 ) : null}

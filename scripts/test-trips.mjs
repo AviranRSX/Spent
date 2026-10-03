@@ -394,6 +394,25 @@ test("summarizeTrip counts completed members, splits before and during, and buil
   assert.equal(tripPhase("2026-04-10T00:00:00.000Z", "2026-04-10"), "during");
 });
 
+test("summarizeTrip puts buffer-day during members in the During phase", () => {
+  const early = { ...member(1, "2026-04-09", -120, "completed", restaurantsCat), reason: "during" };
+  const prepaid = { ...member(2, "2026-04-09", -500, "completed", travelCat), reason: "pre" };
+  const manual = { ...member(3, "2026-04-08", -40, "completed", null), reason: "manual" };
+  const totals = summarizeTrip({ startDate: "2026-04-10", endDate: "2026-04-11" }, [early, prepaid, manual]);
+
+  assert.equal(totals.total, 660);
+  assert.equal(totals.during, 120);
+  assert.equal(totals.before, 540);
+  assert.deepEqual(totals.daily, [
+    { date: "2026-04-09", amount: 120 },
+    { date: "2026-04-10", amount: 0 },
+    { date: "2026-04-11", amount: 0 },
+  ]);
+  assert.equal(tripPhase("2026-04-09", "2026-04-10", "during"), "during");
+  assert.equal(tripPhase("2026-04-11", "2026-04-10", "pre"), "before");
+  assert.equal(tripPhase("2026-04-09", "2026-04-10", "manual"), "before");
+});
+
 test("summarizeTrip stays finite when everything is pending or refunded", () => {
   const pendingOnly = summarizeTrip({ startDate: "2026-05-01", endDate: "2026-05-02" }, [
     member(1, "2026-05-01", -100, "pending", restaurantsCat),
@@ -561,4 +580,13 @@ test("trip strings exist in English and Hebrew with the same keys and no em dash
   assert.ok(en.home.needsAttentionNeedsTrip && he.home.needsAttentionNeedsTrip);
   const text = JSON.stringify([en.trips, he.trips]);
   assert.equal(text.includes("\u2014"), false);
+});
+
+test("foreign amounts lead with the symbol and carry no bidi marks", async () => {
+  const { formatOriginalAmount } = await import("../src/lib/trips/format.ts");
+  const yen = formatOriginalAmount(-48000, "JPY");
+  assert.equal(yen, "¥48,000");
+  assert.equal(formatOriginalAmount(12.5, "EUR"), "€12.50");
+  const bidiMarks = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x61c)}]`);
+  assert.doesNotMatch(yen, bidiMarks);
 });

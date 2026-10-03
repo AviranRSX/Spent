@@ -144,7 +144,9 @@ export function NeedsTripTab() {
                           {formatTripDay(txn.date, locale)}
                         </span>
                         <div className="min-w-0 space-y-1">
-                          <div className="truncate text-sm font-medium">{txn.description}</div>
+                          <div dir="auto" className="w-fit max-w-full truncate text-sm font-medium">
+                            {txn.description}
+                          </div>
                           <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                             {txn.categoryName ? (
                               <Badge
@@ -168,12 +170,12 @@ export function NeedsTripTab() {
                                 : t("needs.causeTravel")}
                             </span>
                             <span aria-hidden="true">·</span>
-                            <span className="tabular-nums">
+                            <span className="tabular-nums" dir="ltr">
                               {formatTripAmount(-txn.chargedAmount, locale)}
                             </span>
                             {txn.originalCurrency !== LOCAL_CURRENCY ? (
                               <span className="tabular-nums" dir="ltr">
-                                ({formatOriginalAmount(txn.originalAmount, txn.originalCurrency, locale)})
+                                ({formatOriginalAmount(txn.originalAmount, txn.originalCurrency)})
                               </span>
                             ) : null}
                           </div>

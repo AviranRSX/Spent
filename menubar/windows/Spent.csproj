@@ -11,7 +11,7 @@
     <ApplicationIcon>Resources\spent.ico</ApplicationIcon>
     <AssemblyName>Spent</AssemblyName>
     <RootNamespace>Spent</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Product>Spent</Product>
     <Description>Spent tray controller. Local-only personal finance.</Description>
   </PropertyGroup>

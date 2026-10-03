@@ -485,7 +485,7 @@ function parseCalStatementSheet(sheet, headerRow, sourceLabel, today, transactio
           branchColumn == null ? "" : vals[branchColumn],
           notesColumn == null ? "" : vals[notesColumn],
         ]) || undefined,
-      type: transactionType.includes("תשלום") ? "installments" : "normal",
+      type: /תשלומ|תשלום/.test(transactionType) ? "installments" : "normal",
       status: processedDate > today ? "pending" : "completed",
     });
   }

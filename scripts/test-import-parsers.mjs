@@ -417,3 +417,24 @@ test("parses a foreign currency amount cell in the CAL statement export", async 
   assert.equal(result.transactions[0].chargedAmount, -95);
   assert.equal(result.transactions[0].chargedCurrency, "ILS");
 });
+
+test("detects installment rows in the CAL statement export", async () => {
+  const buffer = await buildOpenXmlWorkbook([
+    ["פירוט עסקאות לכרטיס מאסטרקארד המסתיים ב-4321"],
+    [],
+    ["עסקאות לחיוב ב-10/08/2026: 150.00 ₪"],
+    ["תאריך\r\nעסקה", "שם בית עסק", "סכום\r\nעסקה", "סכום\r\nחיוב", "סוג\r\nעסקה", "ענף", "הערות"],
+    [excelSerial("2026-07-15"), "חנות לדוגמה", 100, 50, "תשלומים", "", ""],
+    [excelSerial("2026-07-16"), "חנות לדוגמה", 100, 100, "רגילה", "", ""],
+  ]);
+  const result = await parseWorkbookBuffer(buffer, {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+    today: "2026-09-01",
+  });
+  assert.deepEqual(result.rowIssues, []);
+  assert.deepEqual(
+    result.transactions.map((t) => t.type),
+    ["installments", "normal"],
+  );
+});

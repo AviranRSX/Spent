@@ -242,3 +242,72 @@ test("rule 3 tie-breaks: nearest upcoming start wins, equal starts go to the que
   assert.deepEqual(result.get(early.id), { kind: "member", tripId: 20, reason: "pre" });
   assert.deepEqual(result.get(tied.id), { kind: "queue", cause: "ambiguous", suggestedTripIds: [22, 23] });
 });
+
+const {
+  selectDetectionCandidates,
+  clusterTripCandidates,
+  suggestedTripName,
+} = await import("../src/lib/trips/detection.ts");
+
+const detectionCandidates = [
+  { id: 101, date: "2026-04-01", currency: "CZK" },
+  { id: 102, date: "2026-04-02", currency: "CZK" },
+  { id: 103, date: "2026-04-03", currency: "CZK" },
+  { id: 104, date: "2026-04-10", currency: "CZK" },
+  { id: 105, date: "2026-04-12", currency: "CZK" },
+  { id: 106, date: "2026-04-15", currency: "CZK" },
+  { id: 107, date: "2026-05-01", currency: "CZK" },
+  { id: 108, date: "2026-04-02", currency: "PLN" },
+  { id: 109, date: "2026-04-03", currency: "PLN" },
+];
+
+test("detection splits on gaps over 3 days and needs 3 transactions", () => {
+  assert.deepEqual(clusterTripCandidates(detectionCandidates, []), [
+    { currency: "CZK", startDate: "2026-04-01", endDate: "2026-04-03", transactionIds: [101, 102, 103] },
+    { currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15", transactionIds: [104, 105, 106] },
+  ]);
+});
+
+test("detection skips clusters overlapping any same-currency trip, including dismissed ones", () => {
+  const existing = [
+    { currency: "CZK", startDate: "2026-04-01", endDate: "2026-04-03" },
+    { currency: "PLN", startDate: "2026-04-10", endDate: "2026-04-20" },
+  ];
+  assert.deepEqual(clusterTripCandidates(detectionCandidates, existing), [
+    { currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15", transactionIds: [104, 105, 106] },
+  ]);
+});
+
+test("detection candidates exclude ILS, online, non-expense, members and manual no-trip rows", () => {
+  const rows = [
+    { id: 201, date: "2026-04-10", originalCurrency: "Kč", kind: "expense", description: "Demo Kavarna", categoryName: null },
+    { id: 202, date: "2026-04-10", originalCurrency: "ILS", kind: "expense", description: "Demo Ride App", categoryName: null },
+    { id: 203, date: "2026-04-10", originalCurrency: "$", kind: "expense", description: "SHEIN.COM DEMO", categoryName: null },
+    { id: 204, date: "2026-04-10", originalCurrency: "Kč", kind: "income", description: "Demo Refund", categoryName: null },
+    { id: 205, date: "2026-04-10", originalCurrency: "Kč", kind: "expense", description: "Demo Member", categoryName: null },
+    { id: 206, date: "2026-04-10", originalCurrency: "Kč", kind: "expense", description: "Demo Not Trip", categoryName: null },
+    { id: 207, date: "2026-04-11", originalCurrency: "€", kind: "expense", description: "Demo Ambiguous", categoryName: null },
+    { id: 208, date: "2026-04-11T21:00:00.000Z", originalCurrency: "Kč", kind: "expense", description: "Demo Late Night", categoryName: null },
+  ];
+  const memberships = new Map([
+    [205, { kind: "member", tripId: 1, reason: "during" }],
+    [206, { kind: "none", manualNoTrip: true }],
+    [207, { kind: "queue", cause: "ambiguous", suggestedTripIds: [1, 2] }],
+  ]);
+  assert.deepEqual(selectDetectionCandidates(rows, memberships), [
+    { id: 201, date: "2026-04-10", currency: "CZK" },
+    { id: 207, date: "2026-04-11", currency: "EUR" },
+    { id: 208, date: "2026-04-11", currency: "CZK" },
+  ]);
+});
+
+test("suggested trip names use the country, falling back to the currency", () => {
+  assert.deepEqual(suggestedTripName({ currency: "CZK", startDate: "2026-04-10" }), {
+    name: "Czechia Apr 2026",
+    country: "Czechia",
+  });
+  assert.deepEqual(suggestedTripName({ currency: "EUR", startDate: "2026-06-01" }), {
+    name: "EUR Jun 2026",
+    country: "",
+  });
+});

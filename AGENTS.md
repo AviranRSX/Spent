@@ -232,6 +232,7 @@ To reset local state, delete `data/spent.db*` and `data/.encryption-key`.
 - Israeli exports are Hebrew, often with RTL marks and merged header rows. Detection strips `‎` / `‏` and normalizes whitespace before matching.
 - The Leumi "xls" export is actually HTML, not a real workbook.
 - Card bills include installment purchases (`type: installments`) and foreign currency rows where `originalAmount` and `chargedAmount` differ.
+- **Known issue: later installments can dedupe away.** An installment purchase repeats in every monthly card file with the same purchase date, merchant and original amount. The payment number ("N of M") only appears in a notes column, and no parser sets `installmentNumber` / `installmentTotal` yet, so payments 2 to M hash the same as payment 1 and are skipped as duplicates. Fixing it needs the real notes format per export, and care so statement rows still dedupe against already stored rows.
 - `identifier` is not reliably unique across institutions. Dedup uses a composite hash plus a per-hash count, so importing the same file twice is safe and genuine identical purchases on the same day are kept.
 - `israeli-bank-scrapers` runs Puppeteer with a hardcoded Asia/Jerusalem timezone. Most banks except OneZero do not support 2FA. Some (Yahav) only return 6 months of history.
 - `claude-haiku-4-5-20251001` is the default Claude model for categorization. Change it in `src/server/ai/providers/claude.ts`.

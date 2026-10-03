@@ -22,6 +22,7 @@ import {
   scrapeOneZeroWithToken,
 } from "@/server/scrapers/one-zero";
 import { categorizeWorkspaceTransactions } from "@/server/sync/categorization";
+import { runTripDetectionSafely } from "@/server/trips/detection";
 import { toLocalISODate } from "@/server/lib/date-utils";
 import { listAllWorkspaceIds } from "@/server/lib/workspace-context";
 import { getWorkspace } from "@/server/db/queries/workspaces";
@@ -390,6 +391,8 @@ export async function syncWorkspace(
     workspaceName,
     send
   );
+
+  runTripDetectionSafely(workspaceId);
 
   return {
     workspaceId,

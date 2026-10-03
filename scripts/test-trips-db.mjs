@@ -405,3 +405,86 @@ test("rejected assignment batches write nothing", () => {
   assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [hotel], 999999), { ok: false, reason: "trip-not-found" });
   assert.equal(countFor(ws.id), 0);
 });
+
+const { detectTripSuggestions, runTripDetectionSafely } = await import(
+  "../src/server/trips/detection.ts"
+);
+
+test("detection suggests a trip once and never brings a dismissed one back", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips detect test");
+  seedTransactions(db, ws.id, [
+    { date: "2026-06-02", currency: "zł", chargedAmount: -80, description: "Demo Restauracja" },
+    { date: "2026-06-03", currency: "zł", chargedAmount: -40, description: "Demo Targ" },
+    { date: "2026-06-05", currency: "zł", chargedAmount: -60, description: "Demo Basen" },
+    { date: "2026-06-04", currency: "$", chargedAmount: -70, description: "SHEIN.COM DEMO" },
+    { date: "2026-06-04", currency: "ILS", chargedAmount: -30, description: "Demo Local" },
+    { date: "2026-07-01", currency: "₪", chargedAmount: -30, description: "Demo Local 2" },
+  ]);
+
+  const created = detectTripSuggestions(ws.id);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].status, "suggested");
+  assert.equal(created[0].currency, "PLN");
+  assert.equal(created[0].name, "Poland Jun 2026");
+  assert.equal(created[0].country, "Poland");
+  assert.equal(created[0].startDate, "2026-06-02");
+  assert.equal(created[0].endDate, "2026-06-05");
+
+  assert.equal(runTripDetectionSafely(ws.id), 0);
+  tripsQueries.updateTrip(ws.id, created[0].id, { status: "dismissed" });
+  assert.equal(runTripDetectionSafely(ws.id), 0);
+});
+
+test("an import commit runs trip detection", async () => {
+  const { commitImportFiles } = await import("../src/server/imports/import-transactions.ts");
+  const ws = createWorkspace("Trips import hook test");
+  const row = (date, originalAmount, description) => ({
+    accountNumber: "demo-card",
+    date,
+    processedDate: date,
+    originalAmount,
+    originalCurrency: "zł",
+    chargedAmount: originalAmount / 100,
+    description,
+    type: "normal",
+    status: "completed",
+  });
+  await commitImportFiles(
+    ws.id,
+    ws.name,
+    [
+      {
+        fileName: "demo.xlsx",
+        kind: "card",
+        templateType: "max_bill",
+        rows: [
+          row("2026-09-01", -8000, "Demo Restauracja"),
+          row("2026-09-02", -4000, "Demo Targ"),
+          row("2026-09-03", -6000, "Demo Basen"),
+        ],
+      },
+    ],
+    { categorize: false }
+  );
+  const suggested = tripsQueries.getTripsOverview(ws.id).suggested;
+  assert.equal(suggested.length, 1);
+  assert.equal(suggested[0].currency, "PLN");
+});
+
+test("detection failures never throw from the safe wrapper", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips failure test");
+  const original = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.join(" "));
+  db.exec("ALTER TABLE trips RENAME TO trips_bak");
+  try {
+    assert.equal(runTripDetectionSafely(ws.id), 0);
+  } finally {
+    db.exec("ALTER TABLE trips_bak RENAME TO trips");
+    console.error = original;
+  }
+  assert.equal(logged.length, 1);
+  assert.ok(logged[0].startsWith(`Trip detection failed for workspace ${ws.id}:`));
+});

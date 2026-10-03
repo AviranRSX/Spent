@@ -130,6 +130,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["settings"] });
     queryClient.invalidateQueries({ queryKey: ["activity"] });
+    queryClient.invalidateQueries({ queryKey: ["trips"] });
   }, [queryClient]);
 
   // While another month loads, keep the previous one visible but dimmed.

@@ -174,6 +174,24 @@ export interface HomeCashFlow {
   net: number;
 }
 
+export interface HomeKpiFigures {
+  income: number;
+  expenses: number;
+  net: number;
+  /** net / income, or null when income is 0 */
+  savingsRate: number | null;
+}
+
+export interface HomeKpis extends HomeKpiFigures {
+  /** "YYYY-MM" */
+  month: string;
+  prev: HomeKpiFigures;
+  avg6: (HomeKpiFigures & { months: number }) | null;
+  isCurrentMonth: boolean;
+  dayOfMonth: number;
+  daysInMonth: number;
+}
+
 export interface HomeCategorySnapshotItem {
   categoryId: number;
   name: string;

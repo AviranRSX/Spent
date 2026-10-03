@@ -37,6 +37,20 @@ In order:
 4. **Open-source friendly.** Users can clone, run, and customize without code edits.
 5. **Extensibility.** New import templates, banks, and AI providers should be easy to add.
 
+## Sensitive financial data
+
+This repository is public on GitHub, and the working copy sits next to the maintainer's real household finances: bank and card exports in `/transactions/`, and the live database, backups, and debug reports in `/data/`. Both folders are gitignored, but anything copied out of them into a tracked file is published.
+
+Treat all of these as sensitive: account numbers, card last-4 digits, transaction descriptions and merchant names, amounts, dates tied to a merchant, reference or transaction IDs, salary and employer details, export file names (they often embed card digits), and the names of household members.
+
+- **Tests.** Build fixtures from synthetic rows (`scripts/import-workbook-test-helpers.mjs`, `scripts/docs-seed/fake-data.mjs`). Never copy a real row, amount, account number, or file name into a test, not even as an example. New tests must not read from `/transactions/` or `/data/`: they fail for every other contributor and they invite pasting real values into assertions.
+- **Plans, specs, and docs** (`docs/`, READMEs, PR descriptions, commit messages, issues). Describe the shape of the data (column headers, formats, edge cases), not its contents. When a real row is the clearest way to explain a bug, rewrite it with invented values that keep the same structure.
+- **Screenshots.** Capture only from a workspace seeded with fake data, never from the live database.
+- **Logs and debug output.** Never paste real rows into anything that gets committed, shared, or published as an artifact.
+- **Before every commit,** read the diff and look for anything that came from a real export. If real data is already in a commit, stop and tell the user. Removing it needs a history rewrite and force push, which only the user can approve.
+
+**Known issue:** `scripts/test-import-detection.mjs`, `scripts/test-import-parsers.mjs`, and parts of `scripts/test-transaction-ai-logic.mjs` read real exports from `/transactions/` and assert values copied from them. Do not extend this pattern. They should move to synthetic fixtures.
+
 ## Money semantics
 
 These rules decide whether the analysis is right. Read them before touching imports, kinds, categories, or summaries.
@@ -93,7 +107,7 @@ Spent does not track investments themselves (balances, returns, portfolios).
 - Use the repo's existing patterns first. Keep changes scoped and avoid unrelated refactors.
 - Before changing Next.js code, read the relevant guide in `node_modules/next/dist/docs/`.
 - After frontend changes, run the app and check the relevant screen in the browser when feasible, in both English and Hebrew if layout is affected.
-- **Never commit, paste, or log real financial data.** `/transactions/` and `/data/` are gitignored and contain the maintainer's real bank exports and database. Do not copy their contents into code, tests, docs, or commit messages. Use `scripts/docs-seed/fake-data.mjs` or synthetic fixtures for tests.
+- **Never commit, paste, or log real financial data.** Follow "Sensitive financial data" above in code, tests, plans, specs, docs, and commit messages.
 
 ## Architecture
 

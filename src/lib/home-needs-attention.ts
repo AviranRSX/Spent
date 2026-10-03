@@ -1,7 +1,7 @@
 import { buildTransactionsHref } from "./transactions-url";
 import type { HomeNeedsAttention } from "./types";
 
-export type NeedsAttentionRowId = "uncategorized" | "lowConfidence" | "flagged";
+export type NeedsAttentionRowId = "uncategorized" | "lowConfidence" | "flagged" | "needsTrip";
 
 export interface NeedsAttentionRow {
   id: NeedsAttentionRowId;
@@ -33,6 +33,12 @@ export function buildNeedsAttentionRows(
       id: "flagged",
       count: data.flagged,
       href: buildTransactionsHref({ month, kind: "all", review: "pending", source: "all" }),
+    },
+    {
+      id: "needsTrip",
+      count: data.needsTrip,
+      // The trip queue spans all history, so this link ignores `month`.
+      href: "/trips?tab=needs-trip",
     },
   ];
 }

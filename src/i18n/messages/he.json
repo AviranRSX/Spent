@@ -119,6 +119,7 @@
     "needsAttentionUncategorized": "ללא קטגוריה",
     "needsAttentionLowConfidence": "ביטחון AI נמוך",
     "needsAttentionFlagged": "סומן לבדיקה",
+    "needsAttentionNeedsTrip": "דרוש שיוך לטיול",
     "allClear": "הכל תקין.",
     "bankConnections": "חיבורי בנקים",
     "noBanksConnectedYet": "עדיין לא חוברו בנקים.",

@@ -287,6 +287,7 @@ export interface HomeNeedsAttention {
   uncategorized: number;
   lowConfidence: number;
   flagged: number;
+  needsTrip: number;
 }
 
 export interface HomeBankHealthItem {

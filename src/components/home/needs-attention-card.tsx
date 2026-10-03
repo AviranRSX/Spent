@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CircleHelp, Flag, type LucideIcon } from "lucide-react";
+import { AlertTriangle, CircleHelp, Flag, Plane, type LucideIcon } from "lucide-react";
 import { CardShell } from "./card-shell";
 import {
   buildNeedsAttentionRows,
@@ -14,6 +14,7 @@ const ROW_META: Record<NeedsAttentionRowId, { icon: LucideIcon; labelKey: string
   uncategorized: { icon: CircleHelp, labelKey: "needsAttentionUncategorized" },
   lowConfidence: { icon: AlertTriangle, labelKey: "needsAttentionLowConfidence" },
   flagged: { icon: Flag, labelKey: "needsAttentionFlagged" },
+  needsTrip: { icon: Plane, labelKey: "needsAttentionNeedsTrip" },
 };
 
 interface Props {

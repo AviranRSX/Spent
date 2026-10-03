@@ -40,6 +40,7 @@ import type {
   HomeSpendingStats,
 } from "@/lib/types";
 import { BANK_PROVIDERS } from "@/lib/types";
+import { getNeedsTripCount } from "./trips";
 
 const EXCLUDE_TRANSFERS_SQL = `NOT EXISTS (
   SELECT 1 FROM categories transfer_category
@@ -443,6 +444,8 @@ export function getNeedsAttentionCounts(
       LOW_CONFIDENCE_MAX
     ),
     flagged: count("needs_review = 1"),
+    // The trip queue spans all history, so it ignores `range`.
+    needsTrip: getNeedsTripCount(workspaceId),
   };
 }
 

@@ -119,6 +119,7 @@
     "needsAttentionUncategorized": "Uncategorized",
     "needsAttentionLowConfidence": "Low AI confidence",
     "needsAttentionFlagged": "Flagged for review",
+    "needsAttentionNeedsTrip": "Needs a trip",
     "allClear": "All clear.",
     "bankConnections": "Bank connections",
     "noBanksConnectedYet": "No banks connected yet.",

@@ -509,3 +509,19 @@ test("re-categorize targets the trip's AI-labeled Travel members only", () => {
   assert.equal(tripsQueries.getTripDetail(ws.id, trip.id).travelRecategorizableCount, 1);
   assert.equal(tripsQueries.getTravelRecategorizeIds(other.id, trip.id), null);
 });
+
+test("home needs-attention counts include transactions that need a trip", async () => {
+  const { getNeedsAttentionCounts } = await import("../src/server/db/queries/home.ts");
+  const db = getDb();
+  const ws = createWorkspace("Trips home test");
+  const flights = getCategoryByName(ws.id, "Flights", "expense");
+  seedTransactions(db, ws.id, [
+    { date: "2026-06-20", currency: "$", chargedAmount: -5400, description: "Demo Airways", categoryId: flights.id },
+  ]);
+  assert.equal(getNeedsAttentionCounts(ws.id).needsTrip, 1);
+  // Not limited to the month selected on Home: the flight was bought in June.
+  assert.equal(
+    getNeedsAttentionCounts(ws.id, { from: "2026-09-01", to: "2026-09-30" }).needsTrip,
+    1
+  );
+});

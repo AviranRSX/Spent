@@ -45,6 +45,10 @@
   },
   "home": {
     "pageTitle": "בית",
+    "trendShowTable": "הצגה כטבלה",
+    "trendMonth": "חודש",
+    "trendChartLabel": "הכנסות, הוצאות ונטו לפי חודש. בחרו חודש כדי לפתוח אותו.",
+    "trendSelectMonth": "פתיחת {month}",
     "kpisTitle": "הכנסות והוצאות",
     "monthPickerPrev": "החודש הקודם",
     "monthPickerNext": "החודש הבא",

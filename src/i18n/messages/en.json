@@ -45,6 +45,10 @@
   },
   "home": {
     "pageTitle": "Home",
+    "trendShowTable": "Show as table",
+    "trendMonth": "Month",
+    "trendChartLabel": "Income, expenses and net per month. Select a month to open it.",
+    "trendSelectMonth": "Open {month}",
     "kpisTitle": "Income and expenses",
     "monthPickerPrev": "Previous month",
     "monthPickerNext": "Next month",

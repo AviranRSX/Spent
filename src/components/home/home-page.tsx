@@ -24,7 +24,7 @@ import { HomeMonthPicker } from "./home-month-picker";
 import { KpiTiles, KpiTilesSkeleton } from "./kpi-tiles";
 import { ThisMonthCard } from "./this-month-card";
 import { CategorySnapshotCard } from "./category-snapshot-card";
-import { HistoricalTrendCard } from "./historical-trend-card";
+import { CashFlowChartCard } from "./cash-flow-chart-card";
 import { RecentTransactionsCard } from "./recent-transactions-card";
 import { SpendingStatsCard } from "./spending-stats-card";
 import { NeedsAttentionCard } from "./needs-attention-card";
@@ -38,11 +38,16 @@ const ROW_FULL = "col-span-12";
 const ROW_MAIN = "col-span-12 md:col-span-6 lg:col-span-7";
 const ROW_SIDE = "col-span-12 md:col-span-6 lg:col-span-5";
 
+interface SectionHandlers {
+  onSelectMonth: (month: string) => void;
+}
+
 interface SectionContext {
   data: HomePayload | undefined;
   isLoading: boolean;
   isError: boolean;
   skeletonLabels: Record<HomeSection, string>;
+  handlers: SectionHandlers;
 }
 
 export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode }) {
@@ -132,7 +137,13 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
 
   // While another month loads, keep the previous one visible but dimmed.
   const refreshing = isFetching && isPlaceholderData;
-  const ctx: SectionContext = { data, isLoading, isError, skeletonLabels };
+  const ctx: SectionContext = {
+    data,
+    isLoading,
+    isError,
+    skeletonLabels,
+    handlers: { onSelectMonth: handleMonthChange },
+  };
   const monthPicker = (
     <HomeMonthPicker
       month={selectedMonth}
@@ -229,18 +240,21 @@ function renderSection(section: HomeSection, ctx: SectionContext, spanClass: str
 
   return (
     <div key={section} className={spanClass}>
-      {renderCard(section, data)}
+      {renderCard(section, data, ctx.handlers)}
     </div>
   );
 }
 
-function renderCard(section: HomeSection, data: HomePayload) {
+function renderCard(section: HomeSection, data: HomePayload, handlers: SectionHandlers) {
   switch (section) {
     case "kpis":
       return data.kpis ? <KpiTiles data={data.kpis} /> : null;
     case "historicalTrend":
       return data.historicalTrend ? (
-        <HistoricalTrendCard data={data.historicalTrend} />
+        <CashFlowChartCard
+          data={data.historicalTrend}
+          onSelectMonth={handlers.onSelectMonth}
+        />
       ) : null;
     case "categoryBreakdown":
       // Legacy card in this slot until the where-money-went card lands.

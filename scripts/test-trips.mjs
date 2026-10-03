@@ -311,3 +311,18 @@ test("suggested trip names use the country, falling back to the currency", () =>
     country: "",
   });
 });
+
+test("categorization prompts tell the AI to categorize spending abroad by what it is", async () => {
+  const { buildCategorizationPrompt } = await import("../src/server/ai/prompts.ts");
+  for (const allowProposals of [false, true]) {
+    const prompt = buildCategorizationPrompt(
+      [{ description: "Demo Kavarna", amount: -120, currency: "CZK" }],
+      [{ name: "Restaurants", description: "Restaurants", parentName: "Food" }],
+      allowProposals
+    );
+    assert.match(
+      prompt,
+      /Spending abroad is categorized by what it is \(Restaurants, Groceries, Transport, Shopping\)\. Use Travel only for lodging, tours and rentals\./
+    );
+  }
+});

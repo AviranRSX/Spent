@@ -252,7 +252,7 @@ export function createParentCategory(
 
 /**
  * Hard-coded parent assignments for the seeded expense categories. Mirrors
- * migration 017_seed_category_parents.sql so that AI-proposed categories
+ * migrations 017_seed_category_parents.sql and 025_trips.sql so that AI-proposed categories
  * with names matching a known leaf get auto-grouped at creation time. New
  * names (truly novel proposals) stay as orphan leaves; the user can either
  * leave them ungrouped or reassign in Settings.
@@ -262,7 +262,9 @@ export const SEEDED_CATEGORY_PARENTS: Record<string, string> = {
   Restaurants: "Food",
   "Coffee & Cafes": "Food",
   Transport: "Transportation",
-  Travel: "Transportation",
+  Travel: "Trips & Travel",
+  Flights: "Trips & Travel",
+  "Travel Insurance": "Trips & Travel",
   Shopping: "Lifestyle",
   Entertainment: "Lifestyle",
   "Personal Care": "Lifestyle",

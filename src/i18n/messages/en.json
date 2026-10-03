@@ -676,7 +676,10 @@
     "Home & Bills": "Home & Bills",
     "Health & Family": "Health & Family",
     "Money Movement": "Money Movement",
-    "Fees & Taxes": "Fees & Taxes"
+    "Fees & Taxes": "Fees & Taxes",
+    "Trips & Travel": "Trips & Travel",
+    "Flights": "Flights",
+    "Travel Insurance": "Travel Insurance"
   },
   "banks": {
     "isracard": {

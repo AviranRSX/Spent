@@ -45,6 +45,8 @@ function renderCategories(categories: CategoryForCategorization[]): string {
 
 const HIERARCHY_RULE =
   "Category lists may show group headers (e.g., 'Food:') with leaves indented beneath them. Group headers are NOT valid categoryName values - always pick a leaf (the indented name).";
+export const TRAVEL_SPENDING_RULE =
+  "Spending abroad is categorized by what it is (Restaurants, Groceries, Transport, Shopping). Use Travel only for lodging, tours and rentals.";
 
 function renderCorrections(corrections: PastCorrection[]): string {
   if (corrections.length === 0) return "";
@@ -127,6 +129,7 @@ ${CONFIDENCE_BLOCK}
 Rules:
 - Use ONLY category names from the provided list.
 - ${HIERARCHY_RULE}
+- ${TRAVEL_SPENDING_RULE}
 - Every transaction must be categorized; pick the closest matching category.
 - Israeli merchant names (Hebrew or transliterated) are common; categorize based on the business type.
 - Pay attention to the "NOT" clauses in the category descriptions - they disambiguate common confusions.
@@ -162,6 +165,7 @@ Rules for new categories:
 Rules for every transaction:
 - Every transaction must be categorized - either an existing or a proposed new category.
 - ${HIERARCHY_RULE}
+- ${TRAVEL_SPENDING_RULE}
 - Israeli merchant names (Hebrew or transliterated) are common; categorize based on the business type.
 - Pay attention to the "NOT" clauses in the category descriptions.
 - Apply lessons from "Past corrections" - if a new merchant resembles a past correction, prefer the corrected category.

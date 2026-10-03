@@ -45,6 +45,10 @@
   },
   "home": {
     "pageTitle": "בית",
+    "verdictFinishedUnder": "הסתיים {amount} מתחת ליעד",
+    "verdictFinishedOver": "הסתיים {amount} מעל היעד",
+    "spentInMonth": "הוצאות ב{month}",
+    "vsPreviousMonth": "{percent}% לעומת החודש הקודם",
     "whereEmpty": "אין הוצאות בחודש הזה.",
     "whereOther": "אחר",
     "whereShare": "{percent}% מההוצאות",

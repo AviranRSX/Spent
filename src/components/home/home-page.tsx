@@ -22,7 +22,7 @@ import { CategorizeButton } from "@/components/dashboard/categorize-button";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
 import { HomeMonthPicker } from "./home-month-picker";
 import { KpiTiles, KpiTilesSkeleton } from "./kpi-tiles";
-import { ThisMonthCard } from "./this-month-card";
+import { BudgetPaceCard } from "./budget-pace-card";
 import { WhereMoneyWentCard } from "./where-money-went-card";
 import { CashFlowChartCard } from "./cash-flow-chart-card";
 import { RecentTransactionsCard } from "./recent-transactions-card";
@@ -69,7 +69,6 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
       historicalTrend: t("trendTitle"),
       categoryBreakdown: t("whereMoneyWent"),
       budgetPace: t("budgetPaceTitle"),
-      thisMonth: t("budgetPaceTitle"),
       recentTransactions: t("recentActivity"),
       spendingStats: t("spendingStatsTitle"),
       needsAttention: t("needsAttention"),
@@ -260,11 +259,7 @@ function renderCard(section: HomeSection, data: HomePayload, handlers: SectionHa
         <WhereMoneyWentCard data={data.categoryBreakdown} />
       ) : null;
     case "budgetPace":
-      // Legacy card in this slot until the budget pace card lands.
-      return data.thisMonth ? <ThisMonthCard data={data.thisMonth} /> : null;
-    case "thisMonth":
-      // Legacy payload field that is no longer placed in the grid.
-      return null;
+      return data.budgetPace ? <BudgetPaceCard data={data.budgetPace} /> : null;
     case "recentTransactions":
       return data.recentTransactions ? (
         <RecentTransactionsCard items={data.recentTransactions} />
@@ -289,7 +284,6 @@ const SKELETON_HEIGHTS: Record<HomeSection, number> = {
   historicalTrend: 300,
   categoryBreakdown: 260,
   budgetPace: 180,
-  thisMonth: 180,
   recentTransactions: 280,
   spendingStats: 420,
   needsAttention: 160,

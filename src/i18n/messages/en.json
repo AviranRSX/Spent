@@ -45,6 +45,10 @@
   },
   "home": {
     "pageTitle": "Home",
+    "verdictFinishedUnder": "Finished {amount} under target",
+    "verdictFinishedOver": "Finished {amount} over target",
+    "spentInMonth": "Spent in {month}",
+    "vsPreviousMonth": "{percent}% vs. previous month",
     "whereEmpty": "No spending in this month.",
     "whereOther": "Other",
     "whereShare": "{percent}% of expenses",

@@ -792,3 +792,24 @@ test("transaction list filters return exactly the uncategorized and low-confiden
   assert.equal(uncategorized.total, 1);
   assert.equal(uncategorized.transactions[0].description, "Uncategorized row");
 });
+
+test("budget pace messages cover current pace and past-month verdicts", async () => {
+  const { budgetPaceMessage } = await import("../src/lib/home-budget-pace.ts");
+  const current = (spent) => budgetPaceMessage({ spent, budget: 8000, timeElapsedPercent: 50, isPast: false });
+  const past = (spent) => budgetPaceMessage({ spent, budget: 8000, timeElapsedPercent: 100, isPast: true });
+
+  assert.deepEqual(
+    budgetPaceMessage({ spent: 500, budget: 0, timeElapsedPercent: 50, isPast: false }),
+    { key: "spentThisMonth", amount: null, tone: "neutral" }
+  );
+  assert.deepEqual(
+    budgetPaceMessage({ spent: 500, budget: 0, timeElapsedPercent: 100, isPast: true }),
+    { key: "spentInMonth", amount: null, tone: "neutral" }
+  );
+  assert.deepEqual(current(9000), { key: "verdictOver", amount: 1000, tone: "bad" });
+  assert.deepEqual(current(6000), { key: "verdictABitOver", amount: null, tone: "bad" });
+  assert.deepEqual(current(2400), { key: "verdictAhead", amount: null, tone: "good" });
+  assert.deepEqual(current(4000), { key: "verdictOnSchedule", amount: null, tone: "good" });
+  assert.deepEqual(past(8600), { key: "verdictFinishedOver", amount: 600, tone: "bad" });
+  assert.deepEqual(past(7250), { key: "verdictFinishedUnder", amount: 750, tone: "good" });
+});

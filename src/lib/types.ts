@@ -152,22 +152,11 @@ export type HomeSection =
   | "kpis"
   | "budgetPace"
   | "categoryBreakdown"
-  | "thisMonth"
   | "historicalTrend"
   | "recentTransactions"
   | "spendingStats"
   | "needsAttention"
   | "bankHealth";
-
-export interface HomeThisMonth {
-  spent: number;
-  budget: number;
-  deltaVsLastMonth: number | null;
-  pacePhrase: string;
-  daysUntilPayday: number;
-  timeElapsedPercent: number;
-  monthLabel: string;
-}
 
 export interface HomeBudgetPace {
   /** "YYYY-MM" */
@@ -319,7 +308,6 @@ export interface HomePayload {
   kpis: HomeKpis | null;
   budgetPace: HomeBudgetPace | null;
   categoryBreakdown: HomeCategoryBreakdown | null;
-  thisMonth: HomeThisMonth | null;
   historicalTrend: HomeHistoricalTrendPoint[] | null;
   recentTransactions: HomeRecentTransaction[] | null;
   spendingStats: HomeSpendingStats | null;

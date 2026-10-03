@@ -22,6 +22,7 @@ import {
   type HomeMonthRange,
 } from "@/lib/home-month";
 import { buildHomeKpis } from "@/lib/home-kpis";
+import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
 import {
   buildCategoryBreakdown,
   type BreakdownCategory,
@@ -416,32 +417,31 @@ export function getRecentTransactionsForHome(
 }
 
 export function getNeedsAttentionCounts(
-  workspaceId: number
+  workspaceId: number,
+  range?: { from: string; to: string }
 ): HomeNeedsAttention {
   const db = getDb();
-  const uncategorized = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND category_id IS NULL AND kind = 'expense' AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
-  const lowConfidence = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND ai_confidence IS NOT NULL AND ai_confidence < 0.5
-         AND category_source = 'ai' AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
-  const flagged = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND needs_review = 1 AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
+  const rangeSql = range ? " AND date >= ? AND date <= ?" : "";
+  const rangeValues = range ? [range.from, range.to] : [];
+  const count = (condition: string, ...values: (string | number)[]): number =>
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) as count FROM transactions
+           WHERE workspace_id = ? AND status = 'completed' AND ${condition}${rangeSql}`
+        )
+        .get(workspaceId, ...values, ...rangeValues) as { count: number }
+    ).count;
+
   return {
-    uncategorized: uncategorized.count,
-    lowConfidence: lowConfidence.count,
-    flagged: flagged.count,
+    uncategorized: count("category_id IS NULL AND kind = 'expense'"),
+    // Approving a row clears needs_review but keeps ai_confidence, so
+    // approved rows must not stay in this count.
+    lowConfidence: count(
+      "category_source = 'ai' AND ai_confidence IS NOT NULL AND ai_confidence <= ? AND needs_review = 1",
+      LOW_CONFIDENCE_MAX
+    ),
+    flagged: count("needs_review = 1"),
   };
 }
 

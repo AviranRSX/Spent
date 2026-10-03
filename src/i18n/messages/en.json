@@ -171,6 +171,8 @@
     "txnsOne": "txn",
     "txnsOther": "txns",
     "pendingReview": "Pending review",
+    "reviewUncategorized": "Uncategorized",
+    "reviewLowConfidence": "Low AI confidence",
     "nothingFlagged": "Nothing flagged for review.",
     "needCloserLookOne": "transaction needs a closer look",
     "needCloserLookOther": "transactions need a closer look",

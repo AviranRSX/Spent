@@ -171,6 +171,8 @@
     "txnsOne": "תנועה",
     "txnsOther": "תנועות",
     "pendingReview": "ממתין לבדיקה",
+    "reviewUncategorized": "ללא קטגוריה",
+    "reviewLowConfidence": "ביטחון AI נמוך",
     "nothingFlagged": "אין תנועות שמסומנות לבדיקה.",
     "needCloserLookOne": "תנועה דורשת בדיקה נוספת",
     "needCloserLookOther": "תנועות דורשות בדיקה נוספת",

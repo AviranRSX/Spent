@@ -208,7 +208,7 @@ function renderCard(section: HomeSection, data: HomePayload) {
       ) : null;
     case "needsAttention":
       return data.needsAttention ? (
-        <NeedsAttentionCard data={data.needsAttention} />
+        <NeedsAttentionCard data={data.needsAttention} month={data.month} />
       ) : null;
     case "bankHealth":
       return data.bankHealth ? (

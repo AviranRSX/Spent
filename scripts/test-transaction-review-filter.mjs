@@ -60,3 +60,17 @@ test("transaction category options exclude transfer categories", () => {
     ["Salary", "Groceries"]
   );
 });
+
+test("review filters parse from the URL and map to query flags", () => {
+  assert.equal(reviewFilters.LOW_CONFIDENCE_MAX, 4);
+  assert.equal(reviewFilters.parseReviewFilter("pending"), "pending");
+  assert.equal(reviewFilters.parseReviewFilter("uncategorized"), "uncategorized");
+  assert.equal(reviewFilters.parseReviewFilter("lowConfidence"), "lowConfidence");
+  assert.equal(reviewFilters.parseReviewFilter("bogus"), "all");
+  assert.equal(reviewFilters.parseReviewFilter(null), "all");
+
+  assert.deepEqual(reviewFilters.reviewFilterQuery("all"), {});
+  assert.deepEqual(reviewFilters.reviewFilterQuery("pending"), { needsReview: true });
+  assert.deepEqual(reviewFilters.reviewFilterQuery("uncategorized"), { uncategorized: true });
+  assert.deepEqual(reviewFilters.reviewFilterQuery("lowConfidence"), { lowConfidence: true });
+});

@@ -61,6 +61,8 @@ export async function GET(request: Request) {
     provider: searchParams.get("provider") ?? undefined,
     sourceType: parseSourceType(searchParams.get("sourceType")),
     needsReview: searchParams.get("needsReview") === "true",
+    uncategorized: searchParams.get("uncategorized") === "true",
+    lowConfidence: searchParams.get("lowConfidence") === "true",
     credentialIds: credentialIds.length > 0 ? credentialIds : undefined,
     accountNumbers: accountNumbers.length > 0 ? accountNumbers : undefined,
   });

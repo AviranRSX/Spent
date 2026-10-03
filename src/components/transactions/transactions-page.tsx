@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { HelpCircle, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -29,25 +30,40 @@ import {
   getMonthRange,
 } from "@/lib/formatters";
 import {
-  isPendingReviewFilter,
-  serializeReviewFilter,
+  reviewFilterQuery,
   type TransactionReviewFilter,
 } from "@/lib/transaction-review-filter";
+import { parseTransactionsUrlState } from "@/lib/transactions-url";
+import { monthKeyToDate } from "@/lib/home-month";
+import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import type { Locale } from "@/i18n/routing";
 
-const TRANSACTIONS_SOURCE_TYPE = "bank" as const;
+const DEFAULT_SOURCE_TYPE: TransactionSourceType = "bank";
 
 export function TransactionsPage() {
   const t = useTranslations("transactions");
   const locale = useLocale() as Locale;
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const searchParams = useSearchParams();
+  // Deep links from Home (month, category, review queue) seed the filters once.
+  const [initialFilters] = useState(() => parseTransactionsUrlState(searchParams));
+  const [selectedDate, setSelectedDate] = useState(() =>
+    initialFilters.month ? monthKeyToDate(initialFilters.month) : new Date()
+  );
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<number[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<number[]>(
+    initialFilters.categoryIds
+  );
   const [accountFilter, setAccountFilter] = useState<number[]>([]);
   const [page, setPage] = useState(0);
-  const [kind, setKind] = useState<TransactionKindFilter>("expense");
-  const [reviewFilter, setReviewFilter] =
-    useState<TransactionReviewFilter>("all");
+  const [kind, setKind] = useState<TransactionKindFilter>(
+    initialFilters.kind ?? "expense"
+  );
+  const [reviewFilter, setReviewFilter] = useState<TransactionReviewFilter>(
+    initialFilters.review
+  );
+  const [sourceType, setSourceType] = useState<TransactionSourceType>(
+    initialFilters.source ?? DEFAULT_SOURCE_TYPE
+  );
   const [sortField, setSortField] = useState<TransactionSortField>("date");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
@@ -85,6 +101,7 @@ export function TransactionsPage() {
       reviewFilter,
       sortField,
       sortOrder,
+      sourceType,
     ],
     queryFn: () =>
       getTransactions({
@@ -97,8 +114,8 @@ export function TransactionsPage() {
         limit: 50,
         offset: page * 50,
         kind,
-        sourceType: TRANSACTIONS_SOURCE_TYPE,
-        needsReview: serializeReviewFilter(reviewFilter) === "true",
+        sourceType,
+        ...reviewFilterQuery(reviewFilter),
         sort: sortField,
         order: sortOrder,
       }),
@@ -106,12 +123,12 @@ export function TransactionsPage() {
   });
 
   const summaryQuery = useQuery({
-    queryKey: ["transactions-summary", from, to, TRANSACTIONS_SOURCE_TYPE],
+    queryKey: ["transactions-summary", from, to, sourceType],
     queryFn: () =>
       getTransactionsSummary({
         from,
         to,
-        sourceType: TRANSACTIONS_SOURCE_TYPE,
+        sourceType,
       }),
   });
 
@@ -122,7 +139,14 @@ export function TransactionsPage() {
   });
 
   const monthLabel = formatMonthLabel(selectedDate, locale);
-  const pendingReviewActive = isPendingReviewFilter(reviewFilter);
+  const reviewChipLabel =
+    reviewFilter === "uncategorized"
+      ? t("reviewUncategorized")
+      : reviewFilter === "lowConfidence"
+        ? t("reviewLowConfidence")
+        : t("pendingReview");
+  const sourceChipLabel =
+    sourceType === "card" ? t("sourceCards") : t("sourceAll");
 
   const summaryInitialLoading =
     summaryQuery.isPending && summaryQuery.data === undefined;
@@ -186,23 +210,30 @@ export function TransactionsPage() {
             })}
           </div>
 
-          {pendingReviewActive ? (
-            <button
-              type="button"
-              onClick={() => {
+          {reviewFilter !== "all" ? (
+            <FilterChip
+              icon={
+                <HelpCircle
+                  className="size-3.5"
+                  style={{ color: "var(--status-heads-up)" }}
+                  aria-hidden="true"
+                />
+              }
+              label={reviewChipLabel}
+              onClear={() => {
                 setReviewFilter("all");
                 setPage(0);
               }}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
-            >
-              <HelpCircle
-                className="size-3.5"
-                style={{ color: "var(--status-heads-up)" }}
-                aria-hidden="true"
-              />
-              {t("pendingReview")}
-              <X className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            </button>
+            />
+          ) : null}
+          {sourceType !== DEFAULT_SOURCE_TYPE ? (
+            <FilterChip
+              label={sourceChipLabel}
+              onClear={() => {
+                setSourceType(DEFAULT_SOURCE_TYPE);
+                setPage(0);
+              }}
+            />
           ) : null}
         </div>
 
@@ -238,5 +269,27 @@ export function TransactionsPage() {
         />
       </div>
     </>
+  );
+}
+
+function FilterChip({
+  icon,
+  label,
+  onClear,
+}: {
+  icon?: ReactNode;
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-accent"
+    >
+      {icon}
+      {label}
+      <X className="size-3.5 text-muted-foreground" aria-hidden="true" />
+    </button>
   );
 }

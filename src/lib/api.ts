@@ -251,6 +251,8 @@ export function getTransactions(params: {
   provider?: string;
   sourceType?: TransactionSourceType;
   needsReview?: boolean;
+  uncategorized?: boolean;
+  lowConfidence?: boolean;
   credentialIds?: number[];
   accountNumbers?: string[];
 }) {

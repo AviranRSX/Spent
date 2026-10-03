@@ -682,3 +682,113 @@ test("home category breakdown rolls leaves into parent groups and sums to the ex
   const groupTotal = breakdown.groups.reduce((sum, group) => sum + group.amount, 0);
   assert.equal(groupTotal, getHomeKpis(workspaceId, october).expenses);
 });
+
+test("transactions links round-trip month, categories, kind, review and source", async () => {
+  const { buildTransactionsHref, parseTransactionsUrlState } = await import("../src/lib/transactions-url.ts");
+
+  assert.equal(
+    buildTransactionsHref({ month: "2026-09", categoryIds: [4, 7], kind: "expense", source: "all" }),
+    "/transactions?month=2026-09&category=4&category=7&kind=expense&source=all"
+  );
+  assert.equal(buildTransactionsHref({}), "/transactions");
+
+  assert.deepEqual(
+    parseTransactionsUrlState(
+      new URLSearchParams("month=2026-09&category=4&category=x&category=-1&category=7&kind=expense&review=lowConfidence&source=all")
+    ),
+    { month: "2026-09", categoryIds: [4, 7], kind: "expense", review: "lowConfidence", source: "all" }
+  );
+  assert.deepEqual(
+    parseTransactionsUrlState(new URLSearchParams("month=2026-13&kind=bogus&source=moon&review=nope")),
+    { month: null, categoryIds: [], kind: null, review: "all", source: null }
+  );
+});
+
+test("needs attention rows link to the matching /transactions review filters", async () => {
+  const { buildNeedsAttentionRows } = await import("../src/lib/home-needs-attention.ts");
+
+  assert.deepEqual(buildNeedsAttentionRows({ uncategorized: 2, lowConfidence: 1, flagged: 3 }, "2026-09"), [
+    { id: "uncategorized", count: 2, href: "/transactions?month=2026-09&kind=expense&review=uncategorized&source=all" },
+    { id: "lowConfidence", count: 1, href: "/transactions?month=2026-09&kind=all&review=lowConfidence&source=all" },
+    { id: "flagged", count: 3, href: "/transactions?month=2026-09&kind=all&review=pending&source=all" },
+  ]);
+});
+
+// Workspace 3: invented review queue in September 2026.
+let reviewFixturePromise;
+function getReviewFixture() {
+  reviewFixturePromise ??= seedReviewFixture();
+  return reviewFixturePromise;
+}
+
+async function seedReviewFixture() {
+  const { getDb } = await import("../src/server/db/index.ts");
+  const db = getDb();
+  const workspaceId = 3;
+  db.prepare(
+    `INSERT INTO workspaces (id, name, slug) VALUES (?, 'Review fixture', 'review-fixture')`
+  ).run(workspaceId);
+  const syncRunId = db
+    .prepare(
+      `INSERT INTO sync_runs (workspace_id, provider, started_at, status, scrape_from_date)
+       VALUES (?, 'test', '2026-08-01', 'completed', '2026-08-01')`
+    )
+    .run(workspaceId).lastInsertRowid;
+  const groceries = Number(
+    db
+      .prepare(
+        `INSERT INTO categories (workspace_id, name, color, kind) VALUES (?, 'Groceries', '#8FBC8A', 'expense')`
+      )
+      .run(workspaceId).lastInsertRowid
+  );
+  const insert = db.prepare(
+    `INSERT INTO transactions
+       (workspace_id, account_number, date, processed_date, original_amount,
+        original_currency, charged_amount, description, type, status, provider,
+        sync_run_id, dedup_hash, kind, category_id, category_source, ai_confidence, needs_review)
+     VALUES (?, 'acct', ?, ?, -100, 'ILS', -100, ?, 'normal', 'completed', 'isracard_bill',
+             ?, ?, 'expense', ?, ?, ?, ?)`
+  );
+  const rows = [
+    ["2026-09-05", "Uncategorized row", null, null, null, 0],
+    ["2026-09-06", "Low confidence row", groceries, "ai", 3, 1],
+    ["2026-09-07", "Approved low confidence row", groceries, "ai", 2, 0],
+    ["2026-09-08", "Confident row", groceries, "ai", 6, 0],
+    ["2026-09-09", "Flagged without confidence row", groceries, "ai", null, 1],
+    ["2026-08-20", "Older uncategorized row", null, null, null, 0],
+  ];
+  rows.forEach(([date, description, categoryId, source, confidence, needsReview], index) => {
+    insert.run(workspaceId, date, date, description, syncRunId, `review-${index}`,
+      categoryId, source, confidence, needsReview);
+  });
+  return { workspaceId };
+}
+
+test("needs attention counts low confidence on the 1-7 scale, skips approved rows, and can scope to a month", async () => {
+  const { workspaceId } = await getReviewFixture();
+  const { getNeedsAttentionCounts } = await import("../src/server/db/queries/home.ts");
+
+  assert.deepEqual(
+    getNeedsAttentionCounts(workspaceId, { from: "2026-09-01", to: "2026-09-30" }),
+    { uncategorized: 1, lowConfidence: 1, flagged: 2 }
+  );
+  assert.deepEqual(getNeedsAttentionCounts(workspaceId), {
+    uncategorized: 2,
+    lowConfidence: 1,
+    flagged: 2,
+  });
+});
+
+test("transaction list filters return exactly the uncategorized and low-confidence rows", async () => {
+  const { workspaceId } = await getReviewFixture();
+  const { queryTransactions } = await import("../src/server/db/queries/transactions.ts");
+  const september = { from: "2026-09-01", to: "2026-09-30" };
+
+  const lowConfidence = queryTransactions(workspaceId, { ...september, lowConfidence: true });
+  assert.equal(lowConfidence.total, 1);
+  assert.equal(lowConfidence.transactions[0].description, "Low confidence row");
+
+  const uncategorized = queryTransactions(workspaceId, { ...september, uncategorized: true });
+  assert.equal(uncategorized.total, 1);
+  assert.equal(uncategorized.transactions[0].description, "Uncategorized row");
+});

@@ -10,6 +10,7 @@ import {
 } from "@/server/db/queries/categories";
 import type { CategoryKind } from "@/lib/types";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
+import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
 
 interface ApplyBody {
   /**
@@ -75,7 +76,7 @@ export async function POST(request: Request) {
     });
     reviewFlags.push({
       id: transactionId,
-      needsReview: confidence == null || confidence <= 4,
+      needsReview: confidence == null || confidence <= LOW_CONFIDENCE_MAX,
     });
   }
 

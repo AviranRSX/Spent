@@ -193,7 +193,11 @@ export async function GET(request: Request) {
   const needsAttention = safe<HomeNeedsAttention>(
     "needsAttention",
     errors,
-    () => getNeedsAttentionCounts(workspaceId)
+    () =>
+      getNeedsAttentionCounts(workspaceId, {
+        from: selected.from,
+        to: selected.to,
+      })
   );
 
   const bankHealth = safe<HomeBankHealthItem[]>("bankHealth", errors, () =>

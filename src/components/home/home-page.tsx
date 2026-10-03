@@ -23,7 +23,7 @@ import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
 import { HomeMonthPicker } from "./home-month-picker";
 import { KpiTiles, KpiTilesSkeleton } from "./kpi-tiles";
 import { ThisMonthCard } from "./this-month-card";
-import { CategorySnapshotCard } from "./category-snapshot-card";
+import { WhereMoneyWentCard } from "./where-money-went-card";
 import { CashFlowChartCard } from "./cash-flow-chart-card";
 import { RecentTransactionsCard } from "./recent-transactions-card";
 import { SpendingStatsCard } from "./spending-stats-card";
@@ -70,7 +70,6 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
       categoryBreakdown: t("whereMoneyWent"),
       budgetPace: t("budgetPaceTitle"),
       thisMonth: t("budgetPaceTitle"),
-      categorySnapshot: t("whereMoneyWent"),
       recentTransactions: t("recentActivity"),
       spendingStats: t("spendingStatsTitle"),
       needsAttention: t("needsAttention"),
@@ -257,16 +256,14 @@ function renderCard(section: HomeSection, data: HomePayload, handlers: SectionHa
         />
       ) : null;
     case "categoryBreakdown":
-      // Legacy card in this slot until the where-money-went card lands.
-      return data.categorySnapshot ? (
-        <CategorySnapshotCard items={data.categorySnapshot} />
+      return data.categoryBreakdown ? (
+        <WhereMoneyWentCard data={data.categoryBreakdown} />
       ) : null;
     case "budgetPace":
       // Legacy card in this slot until the budget pace card lands.
       return data.thisMonth ? <ThisMonthCard data={data.thisMonth} /> : null;
     case "thisMonth":
-    case "categorySnapshot":
-      // Legacy payload fields that are no longer placed in the grid.
+      // Legacy payload field that is no longer placed in the grid.
       return null;
     case "recentTransactions":
       return data.recentTransactions ? (
@@ -293,7 +290,6 @@ const SKELETON_HEIGHTS: Record<HomeSection, number> = {
   categoryBreakdown: 260,
   budgetPace: 180,
   thisMonth: 180,
-  categorySnapshot: 220,
   recentTransactions: 280,
   spendingStats: 420,
   needsAttention: 160,

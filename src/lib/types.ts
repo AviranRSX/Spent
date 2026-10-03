@@ -153,7 +153,6 @@ export type HomeSection =
   | "budgetPace"
   | "categoryBreakdown"
   | "thisMonth"
-  | "categorySnapshot"
   | "historicalTrend"
   | "recentTransactions"
   | "spendingStats"
@@ -236,15 +235,6 @@ export interface HomeKpis extends HomeKpiFigures {
   isCurrentMonth: boolean;
   dayOfMonth: number;
   daysInMonth: number;
-}
-
-export interface HomeCategorySnapshotItem {
-  categoryId: number;
-  name: string;
-  color: string;
-  spent: number;
-  budget: number;
-  percentSpent: number;
 }
 
 export interface HomeHistoricalTrendPoint {
@@ -330,7 +320,6 @@ export interface HomePayload {
   budgetPace: HomeBudgetPace | null;
   categoryBreakdown: HomeCategoryBreakdown | null;
   thisMonth: HomeThisMonth | null;
-  categorySnapshot: HomeCategorySnapshotItem[] | null;
   historicalTrend: HomeHistoricalTrendPoint[] | null;
   recentTransactions: HomeRecentTransaction[] | null;
   spendingStats: HomeSpendingStats | null;

@@ -9,7 +9,6 @@ import {
   getBudgetPace,
   getCashFlowTrend,
   getCategoryBreakdown,
-  getCategorySnapshot,
   getHomeKpis,
   getNeedsAttentionCounts,
   getRecentTransactionsForHome,
@@ -31,7 +30,6 @@ import type {
   HomeBankHealthItem,
   HomeBudgetPace,
   HomeCategoryBreakdown,
-  HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
   HomeKpis,
   HomeNeedsAttention,
@@ -46,7 +44,6 @@ import type {
 const TREND_MONTHS = 12;
 const STATS_DEFAULT_MONTHS = 6;
 const RECENT_TXN_LIMIT = 8;
-const CATEGORY_SNAPSHOT_LIMIT = 6;
 
 function safe<T>(
   section: HomeSection,
@@ -155,18 +152,6 @@ export async function GET(request: Request) {
     };
   });
 
-  const categorySnapshot = safe<HomeCategorySnapshotItem[]>(
-    "categorySnapshot",
-    errors,
-    () =>
-      getCategorySnapshot(
-        workspaceId,
-        selected.from,
-        selected.to,
-        CATEGORY_SNAPSHOT_LIMIT
-      )
-  );
-
   const historicalTrend = safe<HomeHistoricalTrendPoint[]>(
     "historicalTrend",
     errors,
@@ -209,7 +194,6 @@ export async function GET(request: Request) {
     kpis,
     budgetPace,
     thisMonth,
-    categorySnapshot,
     categoryBreakdown,
     historicalTrend,
     recentTransactions,

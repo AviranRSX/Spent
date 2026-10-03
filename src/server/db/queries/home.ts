@@ -33,7 +33,6 @@ import type {
   HomeBudgetPace,
   HomeCashFlow,
   HomeCategoryBreakdown,
-  HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
   HomeKpis,
   HomeNeedsAttention,
@@ -509,105 +508,4 @@ export function getBankHealth(workspaceId: number): HomeBankHealthItem[] {
       errorMessage: null,
     };
   });
-}
-
-export function getCategorySnapshot(
-  workspaceId: number,
-  from: string,
-  to: string,
-  limit: number
-): HomeCategorySnapshotItem[] {
-  const db = getDb();
-
-  const categories = db
-    .prepare(
-      `SELECT id, parent_id as parentId, name, color
-       FROM categories WHERE workspace_id = ? AND kind = 'expense'`
-    )
-    .all(workspaceId) as Array<{
-    id: number;
-    parentId: number | null;
-    name: string;
-    color: string;
-  }>;
-
-  const parentIds = new Set<number>();
-  for (const c of categories) {
-    if (c.parentId != null) parentIds.add(c.parentId);
-  }
-
-  const spendRows = db
-    .prepare(
-      `SELECT category_id as categoryId, SUM(ABS(charged_amount)) as amount
-       FROM transactions t
-       WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
-         AND t.status = 'completed' AND t.kind = 'expense'
-         AND t.category_id IS NOT NULL
-         AND ${HOME_CATEGORY_SOURCE_SQL}
-         AND ${EXCLUDE_TRANSFERS_SQL}
-       GROUP BY category_id`
-    )
-    .all(workspaceId, from, to, ...HOME_CATEGORY_SOURCE_PROVIDERS) as Array<{
-    categoryId: number;
-    amount: number;
-  }>;
-
-  const budgetRows = db
-    .prepare(
-      `SELECT category_id as categoryId, monthly_amount as monthlyAmount
-       FROM budgets WHERE workspace_id = ?`
-    )
-    .all(workspaceId) as Array<{ categoryId: number; monthlyAmount: number }>;
-
-  const budgetByCategory = new Map<number, number>();
-  for (const b of budgetRows) budgetByCategory.set(b.categoryId, b.monthlyAmount);
-
-  // Roll each leaf's spend up to its parent if it has one, else under its own id.
-  const rolledSpend = new Map<number, number>();
-  const rolledBudget = new Map<number, number>();
-
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
-
-  for (const row of spendRows) {
-    const cat = categoryById.get(row.categoryId);
-    if (!cat) continue;
-    const key = cat.parentId ?? cat.id;
-    rolledSpend.set(key, (rolledSpend.get(key) ?? 0) + row.amount);
-  }
-
-  // Roll up budgets the same way. Parent's explicit budget takes precedence
-  // over the sum of children when it exists.
-  for (const cat of categories) {
-    const explicit = budgetByCategory.get(cat.id);
-    if (explicit == null) continue;
-    const key = cat.parentId ?? cat.id;
-    if (cat.parentId == null && parentIds.has(cat.id)) {
-      // This is a parent with its own explicit budget — use it directly.
-      rolledBudget.set(key, explicit);
-    } else {
-      // Leaf budget: only add if parent doesn't have its own explicit budget.
-      const parentHasOwnBudget =
-        cat.parentId != null && budgetByCategory.has(cat.parentId);
-      if (parentHasOwnBudget) continue;
-      rolledBudget.set(key, (rolledBudget.get(key) ?? 0) + explicit);
-    }
-  }
-
-  const items: HomeCategorySnapshotItem[] = [];
-  for (const [key, spent] of rolledSpend) {
-    const cat = categoryById.get(key);
-    if (!cat) continue;
-    const budget = rolledBudget.get(key) ?? 0;
-    items.push({
-      categoryId: key,
-      name: cat.name,
-      color: cat.color,
-      spent,
-      budget,
-      percentSpent: budget > 0 ? (spent / budget) * 100 : 0,
-    });
-  }
-
-  items.sort((a, b) => b.spent - a.spent);
-  return items.slice(0, limit);
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { HelpCircle, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { PageHeader } from "@/components/layout/app-shell";
+import { Button } from "@/components/ui/button";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
@@ -34,6 +35,8 @@ import {
   type TransactionReviewFilter,
 } from "@/lib/transaction-review-filter";
 import { parseTransactionsUrlState } from "@/lib/transactions-url";
+import { formatTripDates } from "@/lib/trips/format";
+import { parseTransactionsRange } from "@/lib/trips/range-link";
 import { monthKeyToDate } from "@/lib/home-month";
 import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import type { Locale } from "@/i18n/routing";
@@ -46,6 +49,11 @@ export function TransactionsPage() {
   const searchParams = useSearchParams();
   // Deep links from Home (month, category, review queue) seed the filters once.
   const [initialFilters] = useState(() => parseTransactionsUrlState(searchParams));
+  const tTrips = useTranslations("trips");
+  const router = useRouter();
+  // A trip's "Add transactions" link sets an explicit date range (its
+  // source=all is already handled by parseTransactionsUrlState above).
+  const [range, setRange] = useState(() => parseTransactionsRange(searchParams));
   const [selectedDate, setSelectedDate] = useState(() =>
     initialFilters.month ? monthKeyToDate(initialFilters.month) : new Date()
   );
@@ -72,7 +80,9 @@ export function TransactionsPage() {
     { value: "income", label: t("filterIncome") },
     { value: "expense", label: t("filterExpenses") },
   ];
-  const { from, to } = getMonthRange(selectedDate);
+  const monthRange = getMonthRange(selectedDate);
+  const from = range?.from ?? monthRange.from;
+  const to = range?.to ?? monthRange.to;
 
   const allCategoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -157,13 +167,28 @@ export function TransactionsPage() {
     <>
       <PageHeader
         title={t("pageTitle")}
-        meta={monthLabel}
+        meta={range ? formatTripDates(range.from, range.to, locale) : monthLabel}
         actions={
-          <PeriodSelector
-            label={monthLabel}
-            onPrev={() => setSelectedDate((d) => addMonths(d, -1))}
-            onNext={() => setSelectedDate((d) => addMonths(d, 1))}
-          />
+          range ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRange(null);
+                setSourceType(DEFAULT_SOURCE_TYPE);
+                setPage(0);
+                router.replace("/transactions");
+              }}
+            >
+              {tTrips("range.clear")}
+            </Button>
+          ) : (
+            <PeriodSelector
+              label={monthLabel}
+              onPrev={() => setSelectedDate((d) => addMonths(d, -1))}
+              onNext={() => setSelectedDate((d) => addMonths(d, 1))}
+            />
+          )
         }
       />
 

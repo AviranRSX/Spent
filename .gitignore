@@ -58,3 +58,8 @@ next-env.d.ts
 scripts/test-*
 !scripts/test-import-detection.mjs
 !scripts/test-import-preview-orchestration.mjs
+!scripts/test-trips.mjs
+!scripts/test-trips-db.mjs
+
+# Temp databases for tests and demo seeds
+.tmp-tests/

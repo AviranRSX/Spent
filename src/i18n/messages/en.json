@@ -249,6 +249,8 @@
       "beforeGroup": "Before the trip",
       "duringGroup": "During the trip",
       "pending": "Pending",
+      "notCounted": "Not counted",
+      "notCountedTransfers": "Transfers move money between accounts, so they are not counted in trip totals.",
       "pendingNote": "{count, plural, one {# pending charge is} other {# pending charges are}} listed but not counted until completed.",
       "reasonManual": "Added by you",
       "reasonDuring": "During the trip",

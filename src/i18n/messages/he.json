@@ -249,6 +249,8 @@
       "beforeGroup": "לפני הטיול",
       "duringGroup": "במהלך הטיול",
       "pending": "ממתין",
+      "notCounted": "לא נספר",
+      "notCountedTransfers": "העברות מעבירות כסף בין חשבונות, ולכן הן לא נספרות בסכומי הטיול.",
       "pendingNote": "{count, plural, one {חיוב ממתין אחד מוצג} other {# חיובים ממתינים מוצגים}} אבל לא נספרים עד שיושלמו.",
       "reasonManual": "נוסף על ידכם",
       "reasonDuring": "במהלך הטיול",

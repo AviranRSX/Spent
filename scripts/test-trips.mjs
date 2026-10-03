@@ -481,3 +481,24 @@ test("summarizeTrip lists Transfers members but leaves them out of every figure"
     { date: "2026-07-02", amount: 0 },
   ]);
 });
+
+const { buildTripTransactionsHref, parseTransactionsRange } = await import(
+  "../src/lib/trips/range-link.ts"
+);
+
+test("trip transactions link round-trips through the URL", async () => {
+  const href = buildTripTransactionsHref({ startDate: "2026-04-10", endDate: "2026-04-15" });
+  assert.equal(href, "/transactions?from=2026-04-10&to=2026-04-15&source=all");
+  const params = new URL(href, "http://localhost").searchParams;
+  assert.deepEqual(parseTransactionsRange(params), { from: "2026-04-10", to: "2026-04-15" });
+  // The shared /transactions URL parser picks up the source the link sets.
+  const { parseTransactionsUrlState } = await import("../src/lib/transactions-url.ts");
+  assert.equal(parseTransactionsUrlState(params).source, "all");
+  assert.deepEqual(
+    parseTransactionsRange(new URLSearchParams("from=2026-04-10&to=2026-04-15")),
+    { from: "2026-04-10", to: "2026-04-15" }
+  );
+  assert.equal(parseTransactionsRange(new URLSearchParams("from=2026-04-15&to=2026-04-10")), null);
+  assert.equal(parseTransactionsRange(new URLSearchParams("from=2026-13-01&to=2026-04-10")), null);
+  assert.equal(parseTransactionsRange(new URLSearchParams("")), null);
+});

@@ -2,16 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { getActivity, getHome } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  homeHrefForMonth,
+  monthKeyFromDate,
+  resolveHomeMonthKey,
+} from "@/lib/home-month";
 import { PageHeader } from "@/components/layout/app-shell";
 import { SyncButton } from "@/components/dashboard/sync-button";
 import { ImportXlsxButton } from "@/components/dashboard/import-xlsx-button";
 import { CategorizeButton } from "@/components/dashboard/categorize-button";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
+import { HomeMonthPicker } from "./home-month-picker";
+import { KpiTiles, KpiTilesSkeleton } from "./kpi-tiles";
 import { ThisMonthCard } from "./this-month-card";
-import { CashFlowCard } from "./cash-flow-card";
 import { CategorySnapshotCard } from "./category-snapshot-card";
 import { HistoricalTrendCard } from "./historical-trend-card";
 import { RecentTransactionsCard } from "./recent-transactions-card";
@@ -23,29 +34,38 @@ import { SyncFailureBanner } from "./sync-failure-banner";
 import { CardError, CardSkeleton } from "./card-shell";
 import type { DataSourceMode, HomePayload, HomeSection } from "@/lib/types";
 
-const ROW_1 = "col-span-12 lg:col-span-8";
-const ROW_1_SIDE = "col-span-12 md:col-span-6 lg:col-span-4";
-const ROW_2 = "col-span-12 md:col-span-6 lg:col-span-7";
-const ROW_2_SIDE = "col-span-12 md:col-span-6 lg:col-span-5";
+const ROW_FULL = "col-span-12";
+const ROW_MAIN = "col-span-12 md:col-span-6 lg:col-span-7";
+const ROW_SIDE = "col-span-12 md:col-span-6 lg:col-span-5";
+
+interface SectionContext {
+  data: HomePayload | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  skeletonLabels: Record<HomeSection, string>;
+}
 
 export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const scraperMode = dataSourceMode === "scraper";
+  const [now] = useState(() => new Date());
+  const currentMonth = monthKeyFromDate(now);
+  const monthParam = searchParams.get("month");
+  const selectedMonth = resolveHomeMonthKey(monthParam, now);
   const [autoStartSync] = useState(
     () => scraperMode && searchParams.get("sync") === "1"
   );
   const t = useTranslations("home");
   const skeletonLabels = useMemo<Record<HomeSection, string>>(
     () => ({
-      kpis: t("cashFlowTitle"),
-      budgetPace: t("budgetPaceTitle"),
+      kpis: t("kpisTitle"),
+      historicalTrend: t("trendTitle"),
       categoryBreakdown: t("whereMoneyWent"),
-      thisMonth: t("thisMonthLabel", { month: "" }).trim() || t("topCategoriesTitle"),
-      cashFlow: t("cashFlowTitle"),
-      categorySnapshot: t("topCategoriesTitle"),
-      historicalTrend: t("last6Months"),
+      budgetPace: t("budgetPaceTitle"),
+      thisMonth: t("budgetPaceTitle"),
+      categorySnapshot: t("whereMoneyWent"),
       recentTransactions: t("recentActivity"),
       spendingStats: t("spendingStatsTitle"),
       needsAttention: t("needsAttention"),
@@ -60,10 +80,26 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
     }
   }, [autoStartSync, router]);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["home"],
-    queryFn: () => getHome(),
+  // A typed, stale or future ?month falls back to the current month instead
+  // of a 400 from the API.
+  useEffect(() => {
+    if (monthParam != null && monthParam !== selectedMonth) {
+      router.replace(homeHrefForMonth(selectedMonth, now), { scroll: false });
+    }
+  }, [monthParam, selectedMonth, router, now]);
+
+  const { data, isLoading, isError, isFetching, isPlaceholderData } = useQuery({
+    queryKey: ["home", selectedMonth],
+    queryFn: () => getHome(selectedMonth),
+    placeholderData: keepPreviousData,
   });
+
+  const handleMonthChange = useCallback(
+    (month: string) => {
+      router.push(homeHrefForMonth(month, now), { scroll: false });
+    },
+    [router, now]
+  );
 
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
   const { data: activity } = useQuery({
@@ -94,12 +130,24 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
     queryClient.invalidateQueries({ queryKey: ["activity"] });
   }, [queryClient]);
 
+  // While another month loads, keep the previous one visible but dimmed.
+  const refreshing = isFetching && isPlaceholderData;
+  const ctx: SectionContext = { data, isLoading, isError, skeletonLabels };
+  const monthPicker = (
+    <HomeMonthPicker
+      month={selectedMonth}
+      currentMonth={currentMonth}
+      onChange={handleMonthChange}
+    />
+  );
+
   return (
     <>
       <PageHeader
         title={t("pageTitle")}
         actions={
           <>
+            <div className="hidden md:block">{monthPicker}</div>
             {scraperMode && (
               <SyncStatusPill
                 items={data?.bankHealth ?? null}
@@ -122,6 +170,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
       />
 
       <div className="p-4 md:p-6 lg:p-8">
+        <div className="mb-4 flex justify-center md:hidden">{monthPicker}</div>
         {scraperMode && (
           <SyncFailureBanner
             items={data?.bankHealth ?? null}
@@ -129,34 +178,40 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
           />
         )}
         <AINotConnectedBanner className="mb-4 md:mb-5 lg:mb-6" />
-        <div className="grid grid-cols-12 gap-4 md:gap-5 lg:gap-6">
-          {renderSection("thisMonth", data, isLoading, isError, ROW_1, skeletonLabels)}
-          {renderSection("cashFlow", data, isLoading, isError, ROW_1_SIDE, skeletonLabels)}
-          {renderSection("categorySnapshot", data, isLoading, isError, ROW_2, skeletonLabels)}
-          {renderSection("historicalTrend", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
-          {renderSection("recentTransactions", data, isLoading, isError, ROW_2, skeletonLabels)}
-          {renderSection("spendingStats", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
-          {renderSection("needsAttention", data, isLoading, isError, ROW_2, skeletonLabels)}
-          {scraperMode &&
-            renderSection("bankHealth", data, isLoading, isError, ROW_2_SIDE, skeletonLabels)}
+        <div
+          className={cn(
+            "grid grid-cols-12 gap-4 transition-opacity md:gap-5 lg:gap-6",
+            refreshing && "opacity-60"
+          )}
+          aria-busy={refreshing}
+        >
+          {renderSection("kpis", ctx, ROW_FULL)}
+          {renderSection("historicalTrend", ctx, ROW_FULL)}
+          {renderSection("categoryBreakdown", ctx, ROW_MAIN)}
+          {renderSection("budgetPace", ctx, ROW_SIDE)}
+          {renderSection("spendingStats", ctx, ROW_MAIN)}
+          {renderSection("needsAttention", ctx, ROW_SIDE)}
+          {renderSection("recentTransactions", ctx, scraperMode ? ROW_MAIN : ROW_FULL)}
+          {scraperMode && renderSection("bankHealth", ctx, ROW_SIDE)}
         </div>
       </div>
     </>
   );
 }
 
-function renderSection(
-  section: HomeSection,
-  data: HomePayload | undefined,
-  isLoading: boolean,
-  isError: boolean,
-  spanClass: string,
-  skeletonLabels: Record<HomeSection, string>
-) {
+function renderSection(section: HomeSection, ctx: SectionContext, spanClass: string) {
+  const { data, isLoading, isError, skeletonLabels } = ctx;
   if (isLoading || !data) {
     return (
       <div key={section} className={spanClass}>
-        <CardSkeleton label={skeletonLabels[section]} height={SKELETON_HEIGHTS[section]} />
+        {section === "kpis" ? (
+          <KpiTilesSkeleton />
+        ) : (
+          <CardSkeleton
+            label={skeletonLabels[section]}
+            height={SKELETON_HEIGHTS[section]}
+          />
+        )}
       </div>
     );
   }
@@ -182,22 +237,23 @@ function renderSection(
 function renderCard(section: HomeSection, data: HomePayload) {
   switch (section) {
     case "kpis":
-    case "budgetPace":
-    case "categoryBreakdown":
-      // Not placed in the grid yet.
-      return null;
-    case "thisMonth":
-      return data.thisMonth ? <ThisMonthCard data={data.thisMonth} /> : null;
-    case "cashFlow":
-      return data.cashFlow ? <CashFlowCard data={data.cashFlow} /> : null;
-    case "categorySnapshot":
-      return data.categorySnapshot ? (
-        <CategorySnapshotCard items={data.categorySnapshot} />
-      ) : null;
+      return data.kpis ? <KpiTiles data={data.kpis} /> : null;
     case "historicalTrend":
       return data.historicalTrend ? (
         <HistoricalTrendCard data={data.historicalTrend} />
       ) : null;
+    case "categoryBreakdown":
+      // Legacy card in this slot until the where-money-went card lands.
+      return data.categorySnapshot ? (
+        <CategorySnapshotCard items={data.categorySnapshot} />
+      ) : null;
+    case "budgetPace":
+      // Legacy card in this slot until the budget pace card lands.
+      return data.thisMonth ? <ThisMonthCard data={data.thisMonth} /> : null;
+    case "thisMonth":
+    case "categorySnapshot":
+      // Legacy payload fields that are no longer placed in the grid.
+      return null;
     case "recentTransactions":
       return data.recentTransactions ? (
         <RecentTransactionsCard items={data.recentTransactions} />
@@ -219,14 +275,13 @@ function renderCard(section: HomeSection, data: HomePayload) {
 
 const SKELETON_HEIGHTS: Record<HomeSection, number> = {
   kpis: 120,
-  budgetPace: 180,
+  historicalTrend: 300,
   categoryBreakdown: 260,
+  budgetPace: 180,
   thisMonth: 180,
-  cashFlow: 160,
   categorySnapshot: 220,
-  historicalTrend: 180,
   recentTransactions: 280,
-  spendingStats: 500,
+  spendingStats: 420,
   needsAttention: 160,
   bankHealth: 160,
 };

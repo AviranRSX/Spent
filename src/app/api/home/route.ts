@@ -7,7 +7,6 @@ import {
 import {
   getBankHealth,
   getBudgetPace,
-  getCashFlow,
   getCashFlowTrend,
   getCategoryBreakdown,
   getCategorySnapshot,
@@ -32,7 +31,6 @@ import type {
   HomeBankHealthItem,
   HomeBudgetPace,
   HomeCategoryBreakdown,
-  HomeCashFlow,
   HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
   HomeKpis,
@@ -157,10 +155,6 @@ export async function GET(request: Request) {
     };
   });
 
-  const cashFlow = safe<HomeCashFlow>("cashFlow", errors, () =>
-    getCashFlow(workspaceId, selected.from, selected.to)
-  );
-
   const categorySnapshot = safe<HomeCategorySnapshotItem[]>(
     "categorySnapshot",
     errors,
@@ -215,7 +209,6 @@ export async function GET(request: Request) {
     kpis,
     budgetPace,
     thisMonth,
-    cashFlow,
     categorySnapshot,
     categoryBreakdown,
     historicalTrend,

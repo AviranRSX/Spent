@@ -153,7 +153,6 @@ export type HomeSection =
   | "budgetPace"
   | "categoryBreakdown"
   | "thisMonth"
-  | "cashFlow"
   | "categorySnapshot"
   | "historicalTrend"
   | "recentTransactions"
@@ -331,7 +330,6 @@ export interface HomePayload {
   budgetPace: HomeBudgetPace | null;
   categoryBreakdown: HomeCategoryBreakdown | null;
   thisMonth: HomeThisMonth | null;
-  cashFlow: HomeCashFlow | null;
   categorySnapshot: HomeCategorySnapshotItem[] | null;
   historicalTrend: HomeHistoricalTrendPoint[] | null;
   recentTransactions: HomeRecentTransaction[] | null;

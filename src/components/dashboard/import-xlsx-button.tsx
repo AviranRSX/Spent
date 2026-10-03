@@ -95,6 +95,7 @@ export function ImportXlsxButton({ onComplete }: ImportXlsxButtonProps) {
         duplicates: 0,
         skippedRows: 0,
         fileErrors: 0,
+        notices: 0,
         importableRows: 0,
       };
 

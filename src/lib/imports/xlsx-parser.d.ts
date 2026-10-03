@@ -29,7 +29,7 @@ export type ImportDetectionResult =
     }
   | {
       ok: false;
-      code: "unsupported" | "ambiguous" | "unreadable";
+      code: "unsupported" | "ambiguous" | "unreadable" | "not_transactions";
       message: string;
       matches: ImportTemplateType[];
     };
@@ -45,7 +45,7 @@ export function detectWorkbookBuffer(buffer: Buffer): Promise<ImportDetectionRes
 
 export function parseWorkbookBuffer(
   buffer: Buffer,
-  options: { templateType: ImportTemplateType; sourceLabel: string }
+  options: { templateType: ImportTemplateType; sourceLabel: string; today?: string }
 ): Promise<{
   transactions: ParsedImportTransaction[];
   rowIssues: ParsedImportRowIssue[];

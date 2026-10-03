@@ -18,6 +18,13 @@ const IMPORT_SIGNATURES = [
     headers: ["תאריך עסקה", "שם בית עסק", "סכום בש\"ח", "מועד חיוב"],
   },
   {
+    // CAL "current statement" export. Same template, different headers.
+    templateType: "cal_bill",
+    kind: "card",
+    container: "open_xml",
+    headers: ["תאריך עסקה", "שם בית עסק", "סכום עסקה", "סכום חיוב", "סוג עסקה"],
+  },
+  {
     templateType: "hapoalim_bank_account",
     kind: "bank",
     container: "open_xml",
@@ -31,6 +38,16 @@ const IMPORT_SIGNATURES = [
   },
 ];
 
+// Exports that look like bank or card files but hold no individual
+// transactions. Importing them would double count.
+const NON_TRANSACTION_SIGNATURES = [
+  {
+    container: "open_xml",
+    headers: ["תאריך חיוב", "כרטיס", "סכום", "מטבע"],
+    message: "CAL bank-charges summary",
+  },
+];
+
 function normalizeImportHeader(value) {
   return String(value ?? "")
     .replace(/[\u200e\u200f]/g, "")
@@ -40,6 +57,7 @@ function normalizeImportHeader(value) {
 
 function detectImportTemplate(container, workbook) {
   const matches = new Map();
+  let nonTransaction = null;
   for (const sheet of workbook.worksheets) {
     for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
       const headers = new Set(
@@ -53,6 +71,14 @@ function detectImportTemplate(container, workbook) {
           matches.set(signature.templateType, signature);
         }
       }
+      for (const signature of NON_TRANSACTION_SIGNATURES) {
+        if (
+          signature.container === container &&
+          signature.headers.every((header) => headers.has(header))
+        ) {
+          nonTransaction = signature;
+        }
+      }
     }
   }
 
@@ -62,6 +88,14 @@ function detectImportTemplate(container, workbook) {
       ok: true,
       templateType: resolved[0].templateType,
       kind: resolved[0].kind,
+    };
+  }
+  if (resolved.length === 0 && nonTransaction) {
+    return {
+      ok: false,
+      code: "not_transactions",
+      message: nonTransaction.message,
+      matches: [],
     };
   }
   return {

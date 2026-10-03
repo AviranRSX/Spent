@@ -30,6 +30,10 @@
     "days": "days",
     "perMonth": "/ month"
   },
+  "importPreview": {
+    "notTransactionsTitle": "Not a transaction file",
+    "notTransactionsBody": "This is a CAL bank-charges summary: monthly card totals that are already in your bank statement. Import the card's transaction detail file instead."
+  },
   "nav": {
     "home": "Home",
     "budget": "Budget",

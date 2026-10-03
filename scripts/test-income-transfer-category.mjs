@@ -164,3 +164,43 @@ test("transaction page summary excludes transfers from cash-flow totals", () => 
   assert.deepEqual(summary.expense, { total: 3000, count: 3 });
   assert.equal(summary.net, 7000);
 });
+
+test("migration 024 reclassifies plural credit card payments as transfers", () => {
+  const migrationsDir = path.join(process.cwd(), "src", "server", "db", "migrations");
+  const files = readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort();
+  const scratch = new Database(path.join(dataDir, "migration-024.db"));
+  try {
+    for (const file of files.filter((name) => name < "024")) {
+      scratch.pragma("foreign_keys = OFF");
+      scratch.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
+      scratch.pragma("foreign_keys = ON");
+    }
+    const runId = scratch
+      .prepare(
+        `INSERT INTO sync_runs (workspace_id, provider, started_at, status, scrape_from_date)
+         VALUES (1, 'leumi_bank_account', '2026-08-01', 'completed', '2026-08-01')`
+      )
+      .run().lastInsertRowid;
+    const insert = scratch.prepare(
+      `INSERT INTO transactions (workspace_id, account_number, date, processed_date,
+         original_amount, original_currency, charged_amount, description, type, status,
+         provider, sync_run_id, dedup_hash, kind)
+       VALUES (1, '000', '2026-08-02', '2026-08-02', ?, 'ILS', ?, ?, 'normal', 'completed',
+         ?, ?, ?, 'expense')`
+    );
+    insert.run(-480, -480, "כרטיסי אשראי לדוגמה", "leumi_bank_account", runId, "h1");
+    insert.run(-60, -60, "כרטיסי אשראי לדוגמה", "isracard_bill", runId, "h2");
+
+    scratch.exec(readFileSync(path.join(migrationsDir, "024_credit_card_payment_plural.sql"), "utf8"));
+
+    const kinds = scratch
+      .prepare("SELECT provider, kind FROM transactions ORDER BY provider")
+      .all();
+    assert.deepEqual(kinds, [
+      { provider: "isracard_bill", kind: "expense" },
+      { provider: "leumi_bank_account", kind: "transfer" },
+    ]);
+  } finally {
+    scratch.close();
+  }
+});

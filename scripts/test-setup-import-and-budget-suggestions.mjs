@@ -177,6 +177,19 @@ const previewFiles = [
       matches: [],
     },
   },
+  {
+    fileName: "summary.xlsx",
+    kind: null,
+    templateType: null,
+    rows: [],
+    duplicateCount: 0,
+    rowIssues: [],
+    fileIssue: {
+      code: "not_transactions",
+      message: "CAL bank-charges summary",
+      matches: [],
+    },
+  },
 ];
 
 test("summarizes importable duplicate skipped and file-error counts", () => {
@@ -185,6 +198,7 @@ test("summarizes importable duplicate skipped and file-error counts", () => {
     duplicates: 1,
     skippedRows: 1,
     fileErrors: 1,
+    notices: 1,
     importableRows: 1,
   });
 });
@@ -227,6 +241,7 @@ test("formats detected providers and exact Excel row issues", () => {
       validRows: 1,
       duplicates: 0,
       skippedRows: 1,
+      fileIssueCode: null,
       fileIssue: null,
       issueLines: [
         "Sheet1 | Excel row 21 | Missing merchant; Missing charged amount",
@@ -260,6 +275,7 @@ test("formats unsupported workbooks without a detected source", () => {
       validRows: 0,
       duplicates: 0,
       skippedRows: 0,
+      fileIssueCode: "unsupported",
       fileIssue: "Unsupported workbook format",
       issueLines: [],
     },
@@ -287,6 +303,12 @@ test("formats ambiguous workbook matches with detected provider labels", () => {
     display[0]?.fileIssue,
     "Ambiguous workbook format: Isracard, Max"
   );
+});
+
+test("flags non-transaction files with their issue code", () => {
+  const [display] = staging.buildImportPreviewDisplay([previewFiles[2]]);
+  assert.equal(display.fileIssueCode, "not_transactions");
+  assert.equal(display.fileIssue, "CAL bank-charges summary");
 });
 
 test("setup import progress advances after each file for file-sized batches", () => {

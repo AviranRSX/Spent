@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import parser from "../src/lib/imports/xlsx-parser.js";
-import { PROVIDER_FIXTURES, buildOpenXmlWorkbook } from "./import-workbook-test-helpers.mjs";
+import { PROVIDER_FIXTURES, buildCalBankSummaryWorkbook, buildOpenXmlWorkbook } from "./import-workbook-test-helpers.mjs";
 
 const { detectWorkbookBuffer, getOpenXmlArchiveLimitIssue } = parser;
 
 for (const [templateType, kind, buildFixture] of PROVIDER_FIXTURES) {
-  test(`detects a ${templateType} export from workbook content`, async () => {
+  test(`detects a ${templateType} export from workbook content (${buildFixture.name})`, async () => {
     const buffer = await buildFixture();
     assert.deepEqual(await detectWorkbookBuffer(buffer), {
       ok: true,
@@ -96,5 +96,14 @@ test("rejects a workbook matching more than one provider", async () => {
   const result = await detectWorkbookBuffer(buffer);
   assert.equal(result.ok, false);
   assert.equal(result.code, "ambiguous");
-  assert.deepEqual(result.matches.sort(), ["isracard_bill", "max_bill"]);
+  assert.deepEqual(result.matches.sort(), ["cal_bill", "isracard_bill", "max_bill"]);
+});
+
+test("reports the CAL bank-charges summary as a non-transaction file", async () => {
+  assert.deepEqual(await detectWorkbookBuffer(await buildCalBankSummaryWorkbook()), {
+    ok: false,
+    code: "not_transactions",
+    message: "CAL bank-charges summary",
+    matches: [],
+  });
 });

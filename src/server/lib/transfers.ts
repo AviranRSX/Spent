@@ -31,7 +31,7 @@ export const CREDIT_CARD_PAYMENT_PATTERNS: readonly RegExp[] = [
   /אמריקן\s*אקספרס/i,
   /דיינרס/i,
   /תשלום\s*אשראי/i,
-  /כרטיס\s*אשראי/i,
+  /כרטיסי?\s*אשראי/i,
   /חיוב\s*כרטיס/i,
   /\bISRACARD\b/i,
   /\bVISA\b/i,

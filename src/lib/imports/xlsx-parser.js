@@ -50,6 +50,39 @@ function currencyCode(value) {
   return text;
 }
 
+// Statement amount cells are numbers for ILS and text like "€ 24.50" for
+// foreign purchases.
+function amountWithCurrency(value) {
+  if (typeof value === "number") {
+    return { amount: Number.isFinite(value) ? value : null, currency: "ILS" };
+  }
+  const text = asText(value);
+  if (!text) return { amount: null, currency: "ILS" };
+  const numberText = text.match(/-?[\d,]+(?:\.\d+)?/)?.[0] ?? "";
+  const symbol = text.replace(numberText, "").trim();
+  const amount = Number(numberText.replace(/,/g, ""));
+  return {
+    amount: numberText && Number.isFinite(amount) ? amount : null,
+    currency: currencyCode(symbol),
+  };
+}
+
+function localISODate(date = new Date()) {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+const CAL_BILLING_LINE = /לחיוב ב-(?<day>\d{1,2})\/(?<month>\d{1,2})\/(?<year>\d{4})/;
+
+function findCalBillingDate(sheet, headerRow) {
+  for (let rowNo = 1; rowNo < headerRow; rowNo += 1) {
+    const date = dateToISO(rowTexts(sheet.getRow(rowNo)).join(" "), [{ re: CAL_BILLING_LINE }]);
+    if (date) return date;
+  }
+  return null;
+}
+
 function excelSerialToISO(serial) {
   const epoch = Date.UTC(1899, 11, 30);
   const date = new Date(epoch + serial * 86400000);
@@ -321,85 +354,155 @@ function parseLeumiBankAccount(workbook, sourceLabel) {
   return { transactions, rowIssues };
 }
 
-function parseCalBill(workbook, sourceLabel) {
-  const transactions = [];
-  const rowIssues = [];
-  for (const sheet of workbook.worksheets) {
-    const headerRow = findHeaderRow(sheet, [
-      "תאריך עסקה",
-      "שם בית עסק",
-      "סכום בש\"ח",
-      "מועד חיוב",
-    ]);
-    if (!headerRow) continue;
-    const columns = headerColumnMap(sheet.getRow(headerRow));
-    const dateColumn = columns.get("תאריך עסקה");
-    const descriptionColumn = columns.get("שם בית עסק");
-    const amountColumn = columns.get("סכום בש\"ח");
-    const billingDateColumn = columns.get("מועד חיוב");
-    const transactionTypeColumn = columns.get("סוג עסקה");
-    const notesColumn = columns.get("הערות");
+const CAL_LEGACY_HEADERS = ["תאריך עסקה", "שם בית עסק", "סכום בש\"ח", "מועד חיוב"];
+const CAL_STATEMENT_HEADERS = ["תאריך עסקה", "שם בית עסק", "סכום עסקה", "סכום חיוב", "סוג עסקה"];
+
+function calAccountNumber(sheet, sourceLabel) {
+  const accountLine = rowTexts(sheet.getRow(1)).join(" ");
+  return (
+    accountLine.match(/מסתיים ב-(\d{4,})/)?.[1] ??
+    accountLine.match(/כרטיס.*?(\d{4})\b/)?.[1] ??
+    sourceLabel
+  );
+}
+
+function parseCalLegacySheet(sheet, headerRow, sourceLabel, transactions, rowIssues) {
+  const columns = headerColumnMap(sheet.getRow(headerRow));
+  const dateColumn = columns.get("תאריך עסקה");
+  const descriptionColumn = columns.get("שם בית עסק");
+  const amountColumn = columns.get("סכום בש\"ח");
+  const billingDateColumn = columns.get("מועד חיוב");
+  const transactionTypeColumn = columns.get("סוג עסקה");
+  const notesColumn = columns.get("הערות");
+  if (
+    dateColumn == null ||
+    descriptionColumn == null ||
+    amountColumn == null ||
+    billingDateColumn == null
+  ) {
+    return;
+  }
+  const accountNumber = calAccountNumber(sheet, sourceLabel);
+  for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
+    const vals = rowValues(sheet.getRow(rowNo));
     if (
-      dateColumn == null ||
-      descriptionColumn == null ||
-      amountColumn == null ||
-      billingDateColumn == null
+      rowHasHeaders(vals, CAL_LEGACY_HEADERS)
     ) {
       continue;
     }
-    const accountLine = rowTexts(sheet.getRow(1)).join(" ");
-    const accountNumber =
-      accountLine.match(/מסתיים ב-(\d{4,})/)?.[1] ??
-      accountLine.match(/כרטיס.*?(\d{4})\b/)?.[1] ??
-      sourceLabel;
-    for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
-      const vals = rowValues(sheet.getRow(rowNo));
-      if (
-        rowHasHeaders(vals, [
-          "תאריך עסקה",
-          "שם בית עסק",
-          "סכום בש\"ח",
-          "מועד חיוב",
-        ])
-      ) {
-        continue;
-      }
-      const rawDate = vals[dateColumn];
-      const date = dateToISO(rawDate, []);
-      const description = asText(vals[descriptionColumn]);
-      const rawAmount = vals[amountColumn];
-      const originalAmount = signedCardAmount(rawAmount);
-      const chargedAmount = signedCardAmount(rawAmount);
-      const billedDate = dateToISO(vals[billingDateColumn], []);
-      const transactionType =
-        transactionTypeColumn == null ? "" : asText(vals[transactionTypeColumn]);
-      const notes = notesColumn == null ? "" : asText(vals[notesColumn]);
-      if (isTotalRow(vals)) continue;
-      const hasAmount = Boolean(asText(rawAmount));
-      const hasTransactionEvidence = Boolean(
-        (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
-      );
-      if (!hasTransactionEvidence) continue;
-      const problems = [
-        requiredDateProblem(rawDate, date, "transaction date", "Excel date"),
-        requiredTextProblem(description, "merchant"),
-        requiredAmountProblem(rawAmount, originalAmount, "original amount"),
-        requiredAmountProblem(rawAmount, chargedAmount, "charged amount"),
-      ];
-      if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
-      transactions.push({
-        accountNumber,
-        date,
-        processedDate: billedDate ?? date,
-        originalAmount,
-        originalCurrency: "ILS",
-        chargedAmount,
-        chargedCurrency: "ILS",
-        description,
-        memo: normalizeDescription([transactionType, notes]) || undefined,
-        type: transactionType.includes("תשלומים") ? "installments" : "normal",
-        status: billedDate ? "completed" : "pending",
-      });
+    const rawDate = vals[dateColumn];
+    const date = dateToISO(rawDate, []);
+    const description = asText(vals[descriptionColumn]);
+    const rawAmount = vals[amountColumn];
+    const originalAmount = signedCardAmount(rawAmount);
+    const chargedAmount = signedCardAmount(rawAmount);
+    const billedDate = dateToISO(vals[billingDateColumn], []);
+    const transactionType =
+      transactionTypeColumn == null ? "" : asText(vals[transactionTypeColumn]);
+    const notes = notesColumn == null ? "" : asText(vals[notesColumn]);
+    if (isTotalRow(vals)) continue;
+    const hasAmount = Boolean(asText(rawAmount));
+    const hasTransactionEvidence = Boolean(
+      (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
+    );
+    if (!hasTransactionEvidence) continue;
+    const problems = [
+      requiredDateProblem(rawDate, date, "transaction date", "Excel date"),
+      requiredTextProblem(description, "merchant"),
+      requiredAmountProblem(rawAmount, originalAmount, "original amount"),
+      requiredAmountProblem(rawAmount, chargedAmount, "charged amount"),
+    ];
+    if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
+    transactions.push({
+      accountNumber,
+      date,
+      processedDate: billedDate ?? date,
+      originalAmount,
+      originalCurrency: "ILS",
+      chargedAmount,
+      chargedCurrency: "ILS",
+      description,
+      memo: normalizeDescription([transactionType, notes]) || undefined,
+      type: transactionType.includes("תשלומים") ? "installments" : "normal",
+      status: billedDate ? "completed" : "pending",
+    });
+  }
+}
+
+function parseCalStatementSheet(sheet, headerRow, sourceLabel, today, transactions, rowIssues) {
+  const columns = headerColumnMap(sheet.getRow(headerRow));
+  const dateColumn = columns.get("תאריך עסקה");
+  const descriptionColumn = columns.get("שם בית עסק");
+  const originalColumn = columns.get("סכום עסקה");
+  const chargedColumn = columns.get("סכום חיוב");
+  const typeColumn = columns.get("סוג עסקה");
+  const branchColumn = columns.get("ענף");
+  const notesColumn = columns.get("הערות");
+  const accountNumber = calAccountNumber(sheet, sourceLabel);
+  const billingDate = findCalBillingDate(sheet, headerRow);
+
+  for (let rowNo = headerRow + 1; rowNo <= sheet.rowCount; rowNo += 1) {
+    const vals = rowValues(sheet.getRow(rowNo));
+    if (rowHasHeaders(vals, CAL_STATEMENT_HEADERS)) continue;
+    const rawDate = vals[dateColumn];
+    const date = dateToISO(rawDate, []);
+    const description = asText(vals[descriptionColumn]);
+    const rawOriginal = vals[originalColumn];
+    const rawCharged = vals[chargedColumn];
+    if (isTotalRow(vals)) continue;
+    const hasAmount = Boolean(asText(rawCharged));
+    const hasTransactionEvidence = Boolean(
+      (asText(rawDate) && description) || (description && hasAmount) || (asText(rawDate) && hasAmount)
+    );
+    if (!hasTransactionEvidence) continue;
+
+    const original = amountWithCurrency(rawOriginal);
+    const charged = amountWithCurrency(rawCharged);
+    const originalAmount = original.amount == null ? null : original.amount === 0 ? 0 : -Math.abs(original.amount);
+    const chargedAmount = charged.amount == null ? null : charged.amount === 0 ? 0 : -Math.abs(charged.amount);
+    const problems = [
+      requiredDateProblem(rawDate, date, "transaction date", "Excel date"),
+      requiredTextProblem(description, "merchant"),
+      requiredAmountProblem(rawOriginal, originalAmount, "original amount"),
+      requiredAmountProblem(rawCharged, chargedAmount, "charged amount"),
+    ];
+    if (addRowIssue(rowIssues, sheet.name, rowNo, problems)) continue;
+
+    const transactionType = typeColumn == null ? "" : asText(vals[typeColumn]);
+    const processedDate = billingDate ?? date;
+    transactions.push({
+      accountNumber,
+      date,
+      processedDate,
+      originalAmount,
+      originalCurrency: original.currency,
+      chargedAmount,
+      chargedCurrency: "ILS",
+      description,
+      memo:
+        normalizeDescription([
+          transactionType,
+          branchColumn == null ? "" : vals[branchColumn],
+          notesColumn == null ? "" : vals[notesColumn],
+        ]) || undefined,
+      type: /תשלומ|תשלום/.test(transactionType) ? "installments" : "normal",
+      status: processedDate > today ? "pending" : "completed",
+    });
+  }
+}
+
+function parseCalBill(workbook, sourceLabel, today) {
+  const transactions = [];
+  const rowIssues = [];
+  for (const sheet of workbook.worksheets) {
+    const legacyHeaderRow = findHeaderRow(sheet, CAL_LEGACY_HEADERS);
+    if (legacyHeaderRow) {
+      parseCalLegacySheet(sheet, legacyHeaderRow, sourceLabel, transactions, rowIssues);
+      continue;
+    }
+    const statementHeaderRow = findHeaderRow(sheet, CAL_STATEMENT_HEADERS);
+    if (statementHeaderRow) {
+      parseCalStatementSheet(sheet, statementHeaderRow, sourceLabel, today, transactions, rowIssues);
     }
   }
   return { transactions, rowIssues };
@@ -476,7 +579,11 @@ async function parseWorkbookBuffer(buffer, options) {
     case "isracard_bill":
       return parseIsracard(await readOpenXmlWorkbook(buffer), sourceLabel);
     case "cal_bill":
-      return parseCalBill(await readOpenXmlWorkbook(buffer), sourceLabel);
+      return parseCalBill(
+        await readOpenXmlWorkbook(buffer),
+        sourceLabel,
+        options.today ?? localISODate()
+      );
     case "hapoalim_bank_account":
       return parseBankAccount(await readOpenXmlWorkbook(buffer), sourceLabel);
     case "leumi_bank_account":

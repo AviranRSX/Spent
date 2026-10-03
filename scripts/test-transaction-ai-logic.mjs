@@ -40,6 +40,10 @@ test("classifies bank account credit card settlements as transfers", () => {
     transfers.detectKind("ל.מאסטרקרד(יש)", "leumi_bank_account", -2345.67),
     "transfer"
   );
+  assert.equal(
+    transfers.detectKind("כרטיסי אשראי לדוגמה", "leumi_bank_account", -480),
+    "transfer"
+  );
 });
 
 test("parses Ollama JSON object wrappers", async () => {

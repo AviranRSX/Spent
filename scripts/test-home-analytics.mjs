@@ -813,3 +813,12 @@ test("budget pace messages cover current pace and past-month verdicts", async ()
   assert.deepEqual(past(8600), { key: "verdictFinishedOver", amount: 600, tone: "bad" });
   assert.deepEqual(past(7250), { key: "verdictFinishedUnder", amount: 750, tone: "good" });
 });
+
+test("recent transactions for a past month stop at the end of that month", async () => {
+  const { workspaceId } = await getHomeFixture();
+  const { getRecentTransactionsForHome } = await import("../src/server/db/queries/home.ts");
+
+  const rows = getRecentTransactionsForHome(workspaceId, 3, "2026-08-31");
+
+  assert.deepEqual(rows.map((row) => row.date), ["2026-08-20", "2026-08-14", "2026-08-12"]);
+});

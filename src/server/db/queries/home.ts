@@ -388,7 +388,8 @@ export function getSpendingStats(
 
 export function getRecentTransactionsForHome(
   workspaceId: number,
-  limit: number
+  limit: number,
+  to: string
 ): HomeRecentTransaction[] {
   const rows = getDb()
     .prepare(
@@ -398,11 +399,12 @@ export function getRecentTransactionsForHome(
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        WHERE t.workspace_id = ? AND t.status = 'completed' AND t.kind != 'transfer'
+         AND t.date <= ?
          AND ${EXCLUDE_TRANSFERS_SQL}
        ORDER BY t.date DESC, t.id DESC
        LIMIT ?`
     )
-    .all(workspaceId, limit) as Array<{
+    .all(workspaceId, to, limit) as Array<{
     id: number;
     date: string;
     description: string;

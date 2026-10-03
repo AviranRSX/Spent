@@ -94,11 +94,16 @@ export async function GET(request: Request) {
   const recentTransactions = safe<HomeRecentTransaction[]>(
     "recentTransactions",
     errors,
-    () => getRecentTransactionsForHome(workspaceId, RECENT_TXN_LIMIT)
+    () =>
+      getRecentTransactionsForHome(workspaceId, RECENT_TXN_LIMIT, selected.to)
   );
 
   const spendingStats = safe<HomeSpendingStats>("spendingStats", errors, () => {
-    const statsTo = toLocalISODate(getLastCompleteMonthEnd(now));
+    // Averages end at the month before the selected one, so only completed
+    // months count and a past month's averages describe the time before it.
+    const statsTo = toLocalISODate(
+      getLastCompleteMonthEnd(new Date(selected.year, selected.monthIndex, 1))
+    );
     return getSpendingStats(workspaceId, statsTo, STATS_DEFAULT_MONTHS);
   });
 

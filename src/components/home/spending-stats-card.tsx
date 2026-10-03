@@ -38,7 +38,7 @@ export function SpendingStatsCard({ data }: Props) {
 
   if (!hasStats) {
     return (
-      <CardShell label={t("spendingStatsTitle")} className="min-h-[560px]">
+      <CardShell label={t("spendingStatsTitle")}>
         <div className="flex flex-1 flex-col justify-center gap-4">
           <MonthSelector
             value={selectedMonthCount}
@@ -54,7 +54,7 @@ export function SpendingStatsCard({ data }: Props) {
   }
 
   return (
-    <CardShell label={t("spendingStatsTitle")} className="min-h-[560px]">
+    <CardShell label={t("spendingStatsTitle")}>
       <div className="flex flex-1 flex-col gap-4">
         <MonthSelector
           value={selectedMonthCount}

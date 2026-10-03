@@ -274,7 +274,11 @@
       "notATrip": "לא טיול",
       "assignedToast": "נוסף לטיול {name}",
       "notTripToast": "סומן כלא טיול",
-      "noSuggestions": "אין טיולים סביב התאריך הזה"
+      "noSuggestions": "אין טיולים סביב התאריך הזה",
+      "loadError": "לא הצלחנו לטעון את החיובים שמחכים לטיול.",
+      "retry": "לנסות שוב",
+      "showMore": "להציג עוד {count}",
+      "shownOf": "מוצגות {shown} מתוך {total}"
     },
     "bulk": {
       "selected": "{count} נבחרו",

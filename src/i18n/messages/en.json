@@ -274,7 +274,11 @@
       "notATrip": "Not a trip",
       "assignedToast": "Added to {name}",
       "notTripToast": "Marked as not a trip",
-      "noSuggestions": "No trips around this date"
+      "noSuggestions": "No trips around this date",
+      "loadError": "Couldn't load the charges that need a trip.",
+      "retry": "Try again",
+      "showMore": "Show {count} more",
+      "shownOf": "Showing {shown} of {total}"
     },
     "bulk": {
       "selected": "{count} selected",

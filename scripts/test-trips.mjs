@@ -502,3 +502,24 @@ test("trip transactions link round-trips through the URL", async () => {
   assert.equal(parseTransactionsRange(new URLSearchParams("from=2026-13-01&to=2026-04-10")), null);
   assert.equal(parseTransactionsRange(new URLSearchParams("")), null);
 });
+
+const { draftTripFromTransactions } = await import("../src/lib/trips/draft.ts");
+
+test("draft trips take the span, the most common foreign currency and its country", () => {
+  assert.deepEqual(
+    draftTripFromTransactions(
+      [
+        { date: "2026-04-12", originalCurrency: "Kč" },
+        { date: "2026-04-10T21:00:00.000Z", originalCurrency: "€" },
+        { date: "2026-04-11", originalCurrency: "Kč" },
+        { date: "2026-04-11", originalCurrency: "ILS" },
+      ],
+      { locale: "en", fallbackName: "Trip" }
+    ),
+    { name: "Czechia Apr 2026", country: "Czechia", currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-12" }
+  );
+  assert.deepEqual(
+    draftTripFromTransactions([{ date: "2026-05-02", originalCurrency: "ILS" }], { locale: "en", fallbackName: "Trip" }),
+    { name: "Trip May 2026", country: null, currency: "ILS", startDate: "2026-05-02", endDate: "2026-05-02" }
+  );
+});

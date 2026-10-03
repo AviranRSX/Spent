@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { detectTrips, getTrips } from "@/lib/api";
 import { AllTripsTab } from "./all-trips-tab";
+import { NeedsTripTab } from "./needs-trip-tab";
 import { TripDetailTab } from "./trip-detail";
 import { TripFormDialog } from "./trip-form-dialog";
 import { TRIP_KEYS, useInvalidateTrips } from "./use-trip-actions";
@@ -42,6 +43,7 @@ export function TripsPage() {
   }, [runDetection]);
 
   const confirmed = overviewQuery.data?.confirmed ?? [];
+  const needsTripCount = overviewQuery.data?.needsTripCount ?? 0;
   const tripParam = searchParams.get("trip");
   const tabParam = searchParams.get("tab");
 
@@ -84,6 +86,14 @@ export function TripsPage() {
                   {trip.name}
                 </TabsTrigger>
               ))}
+              <TabsTrigger value={NEEDS_TAB} className={`${TRIGGER_CLASS} gap-1.5`}>
+                {t("tabNeedsTrip")}
+                {needsTripCount > 0 ? (
+                  <span className="rounded-full bg-[color-mix(in_oklch,var(--status-heads-up)_22%,transparent)] px-1.5 text-[11px] font-semibold tabular-nums text-foreground">
+                    {needsTripCount}
+                  </span>
+                ) : null}
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -101,6 +111,10 @@ export function TripsPage() {
               <TripDetailTab tripId={trip.id} onDeleted={() => selectTab(ALL_TAB)} />
             </TabsContent>
           ))}
+
+          <TabsContent value={NEEDS_TAB} className="pt-4">
+            <NeedsTripTab />
+          </TabsContent>
         </Tabs>
       </div>
 

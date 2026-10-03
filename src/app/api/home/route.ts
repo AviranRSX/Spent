@@ -9,6 +9,7 @@ import {
   getBudgetPace,
   getCashFlow,
   getCashFlowTrend,
+  getCategoryBreakdown,
   getCategorySnapshot,
   getHomeKpis,
   getNeedsAttentionCounts,
@@ -30,6 +31,7 @@ import { parseHomeMonth } from "@/lib/home-month";
 import type {
   HomeBankHealthItem,
   HomeBudgetPace,
+  HomeCategoryBreakdown,
   HomeCashFlow,
   HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
@@ -198,6 +200,12 @@ export async function GET(request: Request) {
     getBankHealth(workspaceId)
   );
 
+  const categoryBreakdown = safe<HomeCategoryBreakdown>(
+    "categoryBreakdown",
+    errors,
+    () => getCategoryBreakdown(workspaceId, selected)
+  );
+
   const payload: HomePayload = {
     month: selected.key,
     kpis,
@@ -205,6 +213,7 @@ export async function GET(request: Request) {
     thisMonth,
     cashFlow,
     categorySnapshot,
+    categoryBreakdown,
     historicalTrend,
     recentTransactions,
     spendingStats,

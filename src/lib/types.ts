@@ -151,6 +151,7 @@ export interface Budget {
 export type HomeSection =
   | "kpis"
   | "budgetPace"
+  | "categoryBreakdown"
   | "thisMonth"
   | "cashFlow"
   | "categorySnapshot"
@@ -180,6 +181,38 @@ export interface HomeBudgetPace {
   daysUntilPayday: number | null;
   timeElapsedPercent: number;
   isPast: boolean;
+}
+
+export interface HomeCategoryBreakdownChild {
+  categoryId: number;
+  name: string;
+  color: string;
+  amount: number;
+  /** 0..1 share of the month's expenses */
+  share: number;
+}
+
+export interface HomeCategoryBreakdownGroup {
+  /** Parent group id, or the leaf id when it has no parent. Null is the uncategorized bucket. */
+  categoryId: number | null;
+  name: string | null;
+  color: string | null;
+  amount: number;
+  /** 0..1 share of the month's expenses */
+  share: number;
+  /** Mean monthly spend over the average window, or null when there is no window. */
+  avg6: number | null;
+  /** Category ids whose rows make up this group in the month, used for /transactions links. */
+  categoryIds: number[];
+  children: HomeCategoryBreakdownChild[];
+}
+
+export interface HomeCategoryBreakdown {
+  month: string;
+  isCurrentMonth: boolean;
+  total: number;
+  averageMonths: number;
+  groups: HomeCategoryBreakdownGroup[];
 }
 
 export interface HomeCashFlow {
@@ -296,6 +329,7 @@ export interface HomePayload {
   month: string;
   kpis: HomeKpis | null;
   budgetPace: HomeBudgetPace | null;
+  categoryBreakdown: HomeCategoryBreakdown | null;
   thisMonth: HomeThisMonth | null;
   cashFlow: HomeCashFlow | null;
   categorySnapshot: HomeCategorySnapshotItem[] | null;

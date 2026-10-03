@@ -45,6 +45,7 @@
   },
   "home": {
     "pageTitle": "בית",
+    "whereMoneyWent": "לאן הלך הכסף",
     "trendTitle": "תזרים מזומנים ל-12 חודשים",
     "budgetPaceTitle": "קצב תקציב",
     "couldntLoad": "לא הצלחנו לטעון את המקטע הזה.",

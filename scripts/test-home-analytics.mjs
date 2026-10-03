@@ -552,3 +552,133 @@ test("budget pace tracks the current month and gives a final view of past months
     isPast: true,
   });
 });
+
+test("category breakdown falls back to leaf categories when there are no parent groups", async () => {
+  const { buildCategoryBreakdown } = await import("../src/lib/home-category-breakdown.ts");
+
+  const breakdown = buildCategoryBreakdown({
+    month: "2026-09",
+    isCurrentMonth: false,
+    categories: [
+      { id: 1, parentId: null, name: "Groceries", color: "#8FBC8A" },
+      { id: 2, parentId: null, name: "Fuel", color: "#7D90CA" },
+    ],
+    monthRows: [
+      { categoryId: 2, amount: 300 },
+      { categoryId: 1, amount: 700 },
+    ],
+    averageRows: [{ categoryId: 1, amount: 1800 }],
+    averageMonths: 3,
+  });
+
+  assert.deepEqual(breakdown, {
+    month: "2026-09",
+    isCurrentMonth: false,
+    total: 1000,
+    averageMonths: 3,
+    groups: [
+      { categoryId: 1, name: "Groceries", color: "#8FBC8A", amount: 700, share: 0.7, avg6: 600, categoryIds: [1], children: [] },
+      { categoryId: 2, name: "Fuel", color: "#7D90CA", amount: 300, share: 0.3, avg6: 0, categoryIds: [2], children: [] },
+    ],
+  });
+});
+
+test("category breakdown keeps spend on a parent itself and buckets unknown or missing categories as uncategorized", async () => {
+  const { buildCategoryBreakdown } = await import("../src/lib/home-category-breakdown.ts");
+
+  const breakdown = buildCategoryBreakdown({
+    month: "2026-09",
+    isCurrentMonth: true,
+    categories: [
+      { id: 1, parentId: null, name: "Food", color: "#E7A875" },
+      { id: 2, parentId: 1, name: "Groceries", color: "#8FBC8A" },
+    ],
+    monthRows: [
+      { categoryId: 1, amount: 100 },
+      { categoryId: 2, amount: 300 },
+      { categoryId: null, amount: 60 },
+      { categoryId: 99, amount: 40 },
+    ],
+    averageRows: [],
+    averageMonths: 0,
+  });
+
+  assert.deepEqual(breakdown.groups, [
+    {
+      categoryId: 1, name: "Food", color: "#E7A875", amount: 400, share: 0.8, avg6: null,
+      categoryIds: [1, 2],
+      children: [{ categoryId: 2, name: "Groceries", color: "#8FBC8A", amount: 300, share: 0.6 }],
+    },
+    { categoryId: null, name: null, color: null, amount: 100, share: 0.2, avg6: null, categoryIds: [], children: [] },
+  ]);
+  assert.equal(breakdown.total, 500);
+
+  const empty = buildCategoryBreakdown({
+    month: "2026-09", isCurrentMonth: false, categories: [], monthRows: [], averageRows: [], averageMonths: 0,
+  });
+  assert.deepEqual(empty, { month: "2026-09", isCurrentMonth: false, total: 0, averageMonths: 0, groups: [] });
+});
+
+test("donut folds the smallest groups into Other and deltas compare to the average", async () => {
+  const { categoryDeltaVsAverage, foldBreakdownForDonut } = await import("../src/lib/home-category-breakdown.ts");
+  const amounts = [900, 800, 700, 600, 500, 400, 300, 200, 100];
+  const groups = amounts.map((amount, index) => ({
+    categoryId: index + 1,
+    name: `Group ${index + 1}`,
+    color: "#111111",
+    amount,
+    share: amount / 4500,
+    avg6: null,
+    categoryIds: [index + 1],
+    children: [],
+  }));
+
+  const slices = foldBreakdownForDonut(groups, 7);
+  assert.equal(slices.length, 7);
+  assert.deepEqual(slices.slice(0, 6).map((slice) => slice.amount), [900, 800, 700, 600, 500, 400]);
+  assert.equal(slices[0].key, "c1");
+  assert.equal(slices[6].key, "other");
+  assert.equal(slices[6].isOther, true);
+  assert.equal(slices[6].amount, 600);
+  assert.equal(Math.round(slices[6].share * 1e6), Math.round((600 / 4500) * 1e6));
+  assert.equal(foldBreakdownForDonut(groups.slice(0, 3), 7).length, 3);
+
+  assert.equal(categoryDeltaVsAverage(1200, 1000), 20);
+  assert.equal(categoryDeltaVsAverage(800, 1000), -20);
+  assert.equal(categoryDeltaVsAverage(500, 0), null);
+  assert.equal(categoryDeltaVsAverage(500, null), null);
+});
+
+test("home category breakdown rolls leaves into parent groups and sums to the expense KPI", async () => {
+  const { workspaceId, categories: c } = await getHomeFixture();
+  const { getCategoryBreakdown, getHomeKpis } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+  const october = buildHomeMonthRange("2026-10", FIXTURE_NOW);
+
+  const breakdown = getCategoryBreakdown(workspaceId, october);
+
+  assert.deepEqual(breakdown, {
+    month: "2026-10",
+    isCurrentMonth: true,
+    total: 600,
+    averageMonths: 4,
+    groups: [
+      {
+        categoryId: c.food, name: "Food", color: "#E7A875", amount: 400, share: 400 / 600,
+        avg6: 15500 / 4, categoryIds: [c.groceries, c.restaurants],
+        children: [
+          { categoryId: c.groceries, name: "Groceries", color: "#8FBC8A", amount: 250, share: 250 / 600 },
+          { categoryId: c.restaurants, name: "Restaurants", color: "#E29C71", amount: 150, share: 150 / 600 },
+        ],
+      },
+      {
+        categoryId: c.utilities, name: "Utilities", color: "#7D90CA", amount: 120, share: 120 / 600,
+        avg6: 4500 / 4, categoryIds: [c.utilities], children: [],
+      },
+      { categoryId: null, name: null, color: null, amount: 80, share: 80 / 600, avg6: 0, categoryIds: [], children: [] },
+    ],
+  });
+
+  const groupTotal = breakdown.groups.reduce((sum, group) => sum + group.amount, 0);
+  assert.equal(groupTotal, getHomeKpis(workspaceId, october).expenses);
+});

@@ -45,6 +45,7 @@
   },
   "home": {
     "pageTitle": "Home",
+    "whereMoneyWent": "Where money went",
     "trendTitle": "12-month cash flow",
     "budgetPaceTitle": "Budget pace",
     "couldntLoad": "Couldn't load this section.",

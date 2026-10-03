@@ -22,10 +22,16 @@ import {
   type HomeMonthRange,
 } from "@/lib/home-month";
 import { buildHomeKpis } from "@/lib/home-kpis";
+import {
+  buildCategoryBreakdown,
+  type BreakdownCategory,
+  type BreakdownSpendRow,
+} from "@/lib/home-category-breakdown";
 import type {
   HomeBankHealthItem,
   HomeBudgetPace,
   HomeCashFlow,
+  HomeCategoryBreakdown,
   HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
   HomeKpis,
@@ -245,6 +251,59 @@ export function getBudgetPace(
     timeElapsedPercent,
     isPast,
   };
+}
+
+export function getCategoryBreakdown(
+  workspaceId: number,
+  month: HomeMonthRange
+): HomeCategoryBreakdown {
+  const db = getDb();
+  const categories = db
+    .prepare(
+      `SELECT id, parent_id as parentId, name, color
+       FROM categories WHERE workspace_id = ?`
+    )
+    .all(workspaceId) as BreakdownCategory[];
+
+  // Same filters as the Expenses KPI, so the groups add up to it.
+  const spendStmt = db.prepare(
+    `SELECT t.category_id as categoryId, SUM(ABS(t.charged_amount)) as amount
+     FROM transactions t
+     WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
+       AND t.status = 'completed' AND t.kind = 'expense'
+       AND ${HOME_CATEGORY_SOURCE_SQL}
+       AND ${EXCLUDE_TRANSFERS_SQL}
+     GROUP BY t.category_id`
+  );
+  const monthRows = spendStmt.all(
+    workspaceId,
+    month.from,
+    month.to,
+    ...HOME_CATEGORY_SOURCE_PROVIDERS
+  ) as BreakdownSpendRow[];
+
+  const window = getAverageWindow(
+    month,
+    getFirstActivityMonth(workspaceId),
+    HOME_AVERAGE_MONTHS
+  );
+  const averageRows = window
+    ? (spendStmt.all(
+        workspaceId,
+        window.from,
+        window.to,
+        ...HOME_CATEGORY_SOURCE_PROVIDERS
+      ) as BreakdownSpendRow[])
+    : [];
+
+  return buildCategoryBreakdown({
+    month: month.key,
+    isCurrentMonth: month.isCurrent,
+    categories,
+    monthRows,
+    averageRows,
+    averageMonths: window?.months.length ?? 0,
+  });
 }
 
 export function getSpendingStats(

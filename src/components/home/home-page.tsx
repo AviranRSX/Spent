@@ -41,6 +41,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
     () => ({
       kpis: t("cashFlowTitle"),
       budgetPace: t("budgetPaceTitle"),
+      categoryBreakdown: t("whereMoneyWent"),
       thisMonth: t("thisMonthLabel", { month: "" }).trim() || t("topCategoriesTitle"),
       cashFlow: t("cashFlowTitle"),
       categorySnapshot: t("topCategoriesTitle"),
@@ -182,6 +183,7 @@ function renderCard(section: HomeSection, data: HomePayload) {
   switch (section) {
     case "kpis":
     case "budgetPace":
+    case "categoryBreakdown":
       // Not placed in the grid yet.
       return null;
     case "thisMonth":
@@ -218,6 +220,7 @@ function renderCard(section: HomeSection, data: HomePayload) {
 const SKELETON_HEIGHTS: Record<HomeSection, number> = {
   kpis: 120,
   budgetPace: 180,
+  categoryBreakdown: 260,
   thisMonth: 180,
   cashFlow: 160,
   categorySnapshot: 220,

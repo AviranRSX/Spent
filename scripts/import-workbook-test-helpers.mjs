@@ -169,6 +169,17 @@ export function buildHapoalimWorkbook() {
   ]);
 }
 
+// CAL "bank charges summary": monthly card totals debited from the bank. Not
+// a transaction export.
+export function buildCalBankSummaryWorkbook() {
+  return buildOpenXmlWorkbook([
+    ["פירוט חיובים בבנק לחשבון בנק לדוגמה 999-22222 נכון לתאריך 01/09/2026"],
+    ["תאריך\r\nחיוב", "כרטיס", "סכום", "מטבע"],
+    [excelSerial("2026-08-02"), "מאסטרקארד 4321", 480, "₪"],
+    [excelSerial("2026-07-02"), "מאסטרקארד 4321", 515, "₪"],
+  ]);
+}
+
 export function buildLeumiHtml() {
   const row = (cells, tag = "td") =>
     `<tr>${cells.map((cell) => `<${tag}>${cell}</${tag}>`).join("")}</tr>`;

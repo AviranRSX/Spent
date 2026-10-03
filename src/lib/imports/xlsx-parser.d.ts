@@ -29,7 +29,7 @@ export type ImportDetectionResult =
     }
   | {
       ok: false;
-      code: "unsupported" | "ambiguous" | "unreadable";
+      code: "unsupported" | "ambiguous" | "unreadable" | "not_transactions";
       message: string;
       matches: ImportTemplateType[];
     };

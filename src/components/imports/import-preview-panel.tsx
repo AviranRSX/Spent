@@ -1,4 +1,7 @@
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+"use client";
+
+import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   buildImportPreviewDisplay,
   summarizeImportPreviews,
@@ -6,6 +9,7 @@ import {
 import type { ImportPreviewFile } from "@/lib/imports/import-types";
 
 export function ImportPreviewPanel({ files }: { files: ImportPreviewFile[] }) {
+  const t = useTranslations("importPreview");
   const totals = summarizeImportPreviews(files);
   const displayFiles = buildImportPreviewDisplay(files);
 
@@ -21,7 +25,10 @@ export function ImportPreviewPanel({ files }: { files: ImportPreviewFile[] }) {
 
       <div className="max-h-[min(22rem,48vh)] space-y-3 overflow-y-auto overscroll-contain pr-1">
         {displayFiles.map((file, fileIndex) => {
-          const hasIssues = Boolean(file.fileIssue || file.issueLines.length > 0);
+          const isNotice = file.fileIssueCode === "not_transactions";
+          const hasIssues = Boolean(
+            (file.fileIssue && !isNotice) || file.issueLines.length > 0
+          );
 
           return (
             <section
@@ -37,7 +44,12 @@ export function ImportPreviewPanel({ files }: { files: ImportPreviewFile[] }) {
                     {file.providerLabel} | {file.sourceKindLabel}
                   </div>
                 </div>
-                {hasIssues ? (
+                {isNotice ? (
+                  <Info
+                    className="h-4 w-4 shrink-0 text-muted-foreground"
+                    aria-label={t("notTransactionsTitle")}
+                  />
+                ) : hasIssues ? (
                   <AlertCircle
                     className="h-4 w-4 shrink-0 text-destructive"
                     aria-label="Import issues found"
@@ -55,7 +67,14 @@ export function ImportPreviewPanel({ files }: { files: ImportPreviewFile[] }) {
                 {file.skippedRows} skipped
               </div>
 
-              {file.fileIssue && (
+              {file.fileIssue && isNotice && (
+                <div className="mt-3 break-words rounded-md bg-muted px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                  <div className="font-medium text-foreground">{t("notTransactionsTitle")}</div>
+                  {t("notTransactionsBody")}
+                </div>
+              )}
+
+              {file.fileIssue && !isNotice && (
                 <div className="mt-3 break-words rounded-md bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive">
                   {file.fileIssue}
                 </div>

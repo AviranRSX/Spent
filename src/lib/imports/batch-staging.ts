@@ -43,19 +43,24 @@ export function summarizeImportPreviews(
   files: ImportPreviewFile[]
 ): ImportPreviewSummary {
   return files.reduce(
-    (summary, file) => ({
-      validRows: summary.validRows + file.rows.length,
-      duplicates: summary.duplicates + file.duplicateCount,
-      skippedRows: summary.skippedRows + file.rowIssues.length,
-      fileErrors: summary.fileErrors + (file.fileIssue ? 1 : 0),
-      importableRows:
-        summary.importableRows + Math.max(0, file.rows.length - file.duplicateCount),
-    }),
+    (summary, file) => {
+      const isNotice = file.fileIssue?.code === "not_transactions";
+      return {
+        validRows: summary.validRows + file.rows.length,
+        duplicates: summary.duplicates + file.duplicateCount,
+        skippedRows: summary.skippedRows + file.rowIssues.length,
+        fileErrors: summary.fileErrors + (file.fileIssue && !isNotice ? 1 : 0),
+        notices: summary.notices + (isNotice ? 1 : 0),
+        importableRows:
+          summary.importableRows + Math.max(0, file.rows.length - file.duplicateCount),
+      };
+    },
     {
       validRows: 0,
       duplicates: 0,
       skippedRows: 0,
       fileErrors: 0,
+      notices: 0,
       importableRows: 0,
     }
   );
@@ -76,6 +81,7 @@ export function buildImportPreviewDisplay(files: ImportPreviewFile[]) {
     validRows: file.rows.length,
     duplicates: file.duplicateCount,
     skippedRows: file.rowIssues.length,
+    fileIssueCode: file.fileIssue?.code ?? null,
     fileIssue: file.fileIssue
       ? [
           file.fileIssue.message,

@@ -7,7 +7,7 @@ export interface ImportRowIssue {
 }
 
 export interface ImportFileIssue {
-  code: "unsupported" | "ambiguous" | "unreadable";
+  code: "unsupported" | "ambiguous" | "unreadable" | "not_transactions";
   message: string;
   matches: ImportTemplateType[];
 }
@@ -44,5 +44,6 @@ export interface ImportPreviewSummary {
   duplicates: number;
   skippedRows: number;
   fileErrors: number;
+  notices: number;
   importableRows: number;
 }

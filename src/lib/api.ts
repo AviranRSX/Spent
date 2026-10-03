@@ -937,3 +937,9 @@ export function getTripMemberships(transactionIds: number[]) {
     `/api/trips/memberships?${sp}`
   );
 }
+
+export function previewTripTravelRecategorize(tripId: number) {
+  return fetchJSON<CategorizePreview>(`/api/trips/${tripId}/recategorize`, {
+    method: "POST",
+  });
+}

@@ -20,12 +20,14 @@ import type { CategorizePreview } from "@/lib/api";
 
 interface CategorizeReviewDialogProps {
   preview: CategorizePreview;
+  description?: string;
   onClose: () => void;
   onApplied: () => void;
 }
 
 export function CategorizeReviewDialog({
   preview,
+  description,
   onClose,
   onApplied,
 }: CategorizeReviewDialogProps) {
@@ -110,9 +112,13 @@ export function CategorizeReviewDialog({
             AI categorization
           </DialogTitle>
           <DialogDescription>
-            Suggested categories for {preview.uncategorizedCount} uncategorized{" "}
-            {preview.uncategorizedCount === 1 ? "transaction" : "transactions"}.
-            Approve or reject any new categories before applying.
+            {description ?? (
+              <>
+                Suggested categories for {preview.uncategorizedCount} uncategorized{" "}
+                {preview.uncategorizedCount === 1 ? "transaction" : "transactions"}.
+                Approve or reject any new categories before applying.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 

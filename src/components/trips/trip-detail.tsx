@@ -13,6 +13,7 @@ import type { Locale } from "@/i18n/routing";
 import { TripCategoryBreakdown } from "./trip-category-breakdown";
 import { TripDailyChart } from "./trip-daily-chart";
 import { TripHeader } from "./trip-header";
+import { RecategorizeTravelButton } from "./trip-recategorize-button";
 import { TripMemberList } from "./trip-member-list";
 import { TRIP_KEYS, useInvalidateTrips } from "./use-trip-actions";
 
@@ -76,7 +77,20 @@ export function TripDetailTab({ tripId, onDeleted }: TripDetailTabProps) {
 
   return (
     <div className="space-y-6">
-      <TripHeader trip={detail.trip} days={detail.days} onDeleted={onDeleted} actions={addLink} />
+      <TripHeader
+        trip={detail.trip}
+        days={detail.days}
+        onDeleted={onDeleted}
+        actions={
+          <>
+            <RecategorizeTravelButton
+              tripId={detail.trip.id}
+              count={detail.travelRecategorizableCount}
+            />
+            {addLink}
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label={t("detail.kpiTotal")} value={formatTripAmount(detail.total, locale)} />

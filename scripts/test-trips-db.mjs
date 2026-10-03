@@ -488,3 +488,24 @@ test("detection failures never throw from the safe wrapper", () => {
   assert.equal(logged.length, 1);
   assert.ok(logged[0].startsWith(`Trip detection failed for workspace ${ws.id}:`));
 });
+
+test("re-categorize targets the trip's AI-labeled Travel members only", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips recategorize test");
+  const other = createWorkspace("Trips recategorize other");
+  const travel = getCategoryByName(ws.id, "Travel", "expense");
+  const restaurants = getCategoryByName(ws.id, "Restaurants", "expense");
+  const trip = tripsQueries.createTrip(ws.id, {
+    name: "Prague", country: "Czechia", currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15",
+  });
+  const [aiTravel] = seedTransactions(db, ws.id, [
+    { date: "2026-04-11", currency: "Kč", chargedAmount: -100, description: "Demo Kavarna", categoryId: travel.id },
+    { date: "2026-04-11", currency: "Kč", chargedAmount: -900, description: "Demo Hotel", categoryId: travel.id, categorySource: "user" },
+    { date: "2026-04-12", currency: "Kč", chargedAmount: -80, description: "Demo Bistro", categoryId: restaurants.id },
+    { date: "2026-06-01", currency: "ILS", chargedAmount: -50, description: "Demo Local Tour", categoryId: travel.id },
+  ]);
+
+  assert.deepEqual(tripsQueries.getTravelRecategorizeIds(ws.id, trip.id), [aiTravel]);
+  assert.equal(tripsQueries.getTripDetail(ws.id, trip.id).travelRecategorizableCount, 1);
+  assert.equal(tripsQueries.getTravelRecategorizeIds(other.id, trip.id), null);
+});

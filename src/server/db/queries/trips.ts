@@ -468,3 +468,19 @@ export function getTransactionTripInfo(
   }
   return info;
 }
+
+/**
+ * Trip members still labeled Travel by the AI. User-chosen categories are
+ * skipped because batchUpdateCategories never overwrites them anyway.
+ */
+export function getTravelRecategorizeIds(
+  workspaceId: number,
+  tripId: number
+): number[] | null {
+  const state = loadTripState(workspaceId);
+  const trip = state.trips.find((t) => t.id === tripId);
+  if (!trip) return null;
+  return membersFor(state, trip)
+    .filter((m) => m.categoryName === "Travel" && m.categorySource !== "user")
+    .map((m) => m.id);
+}

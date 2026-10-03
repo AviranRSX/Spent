@@ -13,6 +13,8 @@ import {
 } from "@/lib/trips/membership";
 import { summarizeTrip, tripPhase } from "@/lib/trips/summary";
 import type {
+  NeedsTripItem,
+  TransactionTripInfo,
   Trip,
   TripDetail,
   TripInput,
@@ -323,4 +325,146 @@ export function getTripDetail(workspaceId: number, id: number): TripDetail | nul
       (m) => m.categoryName === "Travel" && m.categorySource !== "user"
     ).length,
   };
+}
+
+export type AssignTripResult =
+  | { ok: true; count: number }
+  | {
+      ok: false;
+      reason: "trip-not-found" | "trip-not-confirmed" | "unknown-transactions";
+    };
+
+function allTransactionsInWorkspace(
+  workspaceId: number,
+  transactionIds: readonly number[]
+): boolean {
+  const placeholders = transactionIds.map(() => "?").join(",");
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) AS n FROM transactions
+       WHERE workspace_id = ? AND id IN (${placeholders})`
+    )
+    .get(workspaceId, ...transactionIds) as { n: number };
+  return row.n === new Set(transactionIds).size;
+}
+
+/** Manual decision: a confirmed trip, or null for "not part of any trip". */
+export function setTripAssignments(
+  workspaceId: number,
+  transactionIds: readonly number[],
+  tripId: number | null
+): AssignTripResult {
+  if (transactionIds.length === 0) return { ok: false, reason: "unknown-transactions" };
+  const db = getDb();
+  const upsert = db.prepare(
+    `INSERT INTO trip_assignments (transaction_id, workspace_id, trip_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT(transaction_id) DO UPDATE SET
+       trip_id = excluded.trip_id,
+       created_at = datetime('now')
+     WHERE trip_assignments.workspace_id = excluded.workspace_id`
+  );
+  // Validation and writes share one transaction so a rejected batch writes nothing.
+  return db.transaction((): AssignTripResult => {
+    if (tripId !== null) {
+      const trip = getTrip(workspaceId, tripId);
+      if (!trip) return { ok: false, reason: "trip-not-found" };
+      if (trip.status !== "confirmed") return { ok: false, reason: "trip-not-confirmed" };
+    }
+    if (!allTransactionsInWorkspace(workspaceId, transactionIds)) {
+      return { ok: false, reason: "unknown-transactions" };
+    }
+    for (const id of transactionIds) upsert.run(id, workspaceId, tripId);
+    return { ok: true, count: new Set(transactionIds).size };
+  })();
+}
+
+/** Reverts transactions to the automatic rules. */
+export function clearTripAssignments(
+  workspaceId: number,
+  transactionIds: readonly number[]
+): number {
+  if (transactionIds.length === 0) return 0;
+  const placeholders = transactionIds.map(() => "?").join(",");
+  return getDb()
+    .prepare(
+      `DELETE FROM trip_assignments
+       WHERE workspace_id = ? AND transaction_id IN (${placeholders})`
+    )
+    .run(workspaceId, ...transactionIds).changes;
+}
+
+export function getNeedsTripQueue(workspaceId: number): NeedsTripItem[] {
+  const state = loadTripState(workspaceId);
+  const confirmedById = new Map(state.confirmed.map((t) => [t.id, t] as const));
+  const items: NeedsTripItem[] = [];
+  for (const row of state.rows) {
+    const m = state.memberships.get(row.id);
+    if (m?.kind !== "queue") continue;
+    items.push({
+      transaction: {
+        id: row.id,
+        date: row.date,
+        description: row.description,
+        chargedAmount: row.chargedAmount,
+        originalAmount: row.originalAmount,
+        originalCurrency: normalizeCurrency(row.originalCurrency),
+        status: row.status,
+        categoryName: row.categoryName,
+        categoryColor: row.categoryColor,
+      },
+      cause: m.cause,
+      suggestions: m.suggestedTripIds.flatMap((id) => {
+        const trip = confirmedById.get(id);
+        return trip ? [toTripRef(trip)] : [];
+      }),
+    });
+  }
+  return items.sort(
+    (a, b) =>
+      b.transaction.date.localeCompare(a.transaction.date) ||
+      b.transaction.id - a.transaction.id
+  );
+}
+
+export function getNeedsTripCount(workspaceId: number): number {
+  return countQueue(loadTripState(workspaceId).memberships);
+}
+
+/** Trip info for specific rows (table badges and the category prompt). */
+export function getTransactionTripInfo(
+  workspaceId: number,
+  transactionIds: readonly number[]
+): Record<number, TransactionTripInfo> {
+  const trips = listTrips(workspaceId);
+  const tripsById = new Map(trips.map((t) => [t.id, t] as const));
+  const rows = loadTripTransactions(workspaceId, transactionIds);
+  const memberships = resolveTripMembership(
+    rows,
+    trips.map(toMembershipTrip),
+    listTripAssignments(workspaceId)
+  );
+  const info: Record<number, TransactionTripInfo> = {};
+  for (const id of transactionIds) {
+    const m = memberships.get(id);
+    if (!m || m.kind === "none") {
+      info[id] = { kind: "none", manualNoTrip: m?.kind === "none" && m.manualNoTrip };
+    } else if (m.kind === "member") {
+      info[id] = {
+        kind: "member",
+        tripId: m.tripId,
+        tripName: tripsById.get(m.tripId)?.name ?? "",
+        reason: m.reason,
+      };
+    } else {
+      info[id] = {
+        kind: "queue",
+        suggestions: m.suggestedTripIds.flatMap((tripId) => {
+          const trip = tripsById.get(tripId);
+          return trip ? [toTripRef(trip)] : [];
+        }),
+      };
+    }
+  }
+  return info;
 }

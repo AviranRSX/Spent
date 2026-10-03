@@ -313,3 +313,95 @@ test("trip dates round-trip as plain days", () => {
   assert.equal(detail.perDay, 0);
   assert.deepEqual(detail.daily, [{ date: "2026-03-03", amount: 0 }]);
 });
+
+test("manual assignments override rules, null marks not a trip, delete reverts", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips assign test");
+  const other = createWorkspace("Trips assign other");
+  const local = tripsQueries.createTrip(ws.id, {
+    name: "Galil weekend", country: null, currency: "ILS", startDate: "2026-05-01", endDate: "2026-05-02",
+  });
+  const [zimmer, dinner] = seedTransactions(db, ws.id, [
+    { date: "2026-05-01", currency: "ILS", chargedAmount: -890, description: "Demo Zimmer" },
+    { date: "2026-05-02", currency: "ILS", chargedAmount: -240, description: "Demo Dinner" },
+  ]);
+  const [foreignRow] = seedTransactions(db, other.id, [
+    { date: "2026-05-01", currency: "ILS", chargedAmount: -10, description: "Demo Other" },
+  ]);
+
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [zimmer, dinner], local.id), { ok: true, count: 2 });
+  assert.deepEqual(tripsQueries.getTransactionTripInfo(ws.id, [zimmer])[zimmer], {
+    kind: "member", tripId: local.id, tripName: "Galil weekend", reason: "manual",
+  });
+  assert.equal(tripsQueries.getTripsOverview(ws.id).confirmed[0].total, 1130);
+
+  tripsQueries.setTripAssignments(ws.id, [zimmer], null);
+  assert.deepEqual(tripsQueries.getTransactionTripInfo(ws.id, [zimmer])[zimmer], { kind: "none", manualNoTrip: true });
+
+  assert.equal(tripsQueries.clearTripAssignments(ws.id, [zimmer]), 1);
+  assert.deepEqual(tripsQueries.getTransactionTripInfo(ws.id, [zimmer])[zimmer], { kind: "none", manualNoTrip: false });
+
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [foreignRow], local.id), { ok: false, reason: "unknown-transactions" });
+  assert.deepEqual(tripsQueries.setTripAssignments(other.id, [foreignRow], local.id), { ok: false, reason: "trip-not-found" });
+  const suggested = tripsQueries.createTrip(ws.id, {
+    name: "Maybe", country: null, currency: "CZK", startDate: "2026-06-01", endDate: "2026-06-02",
+  }, "suggested");
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [dinner], suggested.id), { ok: false, reason: "trip-not-confirmed" });
+  assert.equal(tripsQueries.clearTripAssignments(other.id, [dinner]), 0);
+
+  tripsQueries.deleteTrip(ws.id, local.id);
+  const left = db.prepare("SELECT COUNT(*) AS n FROM trip_assignments WHERE transaction_id = ?").get(dinner);
+  assert.equal(left.n, 0);
+});
+
+test("needs-a-trip queue lists travel rows with ranked suggestions", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips queue test");
+  const flights = getCategoryByName(ws.id, "Flights", "expense");
+  const japan = tripsQueries.createTrip(ws.id, {
+    name: "Japan", country: "Japan", currency: "JPY", startDate: "2026-08-01", endDate: "2026-08-10",
+  });
+  const usa = tripsQueries.createTrip(ws.id, {
+    name: "New York", country: "United States", currency: "USD", startDate: "2026-07-15", endDate: "2026-07-20",
+  });
+  const [flight] = seedTransactions(db, ws.id, [
+    { date: "2026-06-20", currency: "$", chargedAmount: -5400, description: "Demo Airways", categoryId: flights.id },
+  ]);
+
+  const queue = tripsQueries.getNeedsTripQueue(ws.id);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].transaction.id, flight);
+  assert.equal(queue[0].transaction.originalCurrency, "USD");
+  assert.equal(queue[0].cause, "travel-category");
+  assert.deepEqual(queue[0].suggestions.map((s) => s.id), [usa.id, japan.id]);
+  assert.equal(tripsQueries.getNeedsTripCount(ws.id), 1);
+
+  tripsQueries.setTripAssignments(ws.id, [flight], japan.id);
+  assert.equal(tripsQueries.getNeedsTripCount(ws.id), 0);
+});
+
+test("rejected assignment batches write nothing", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips atomic test");
+  const other = createWorkspace("Trips atomic other");
+  const trip = tripsQueries.createTrip(ws.id, {
+    name: "Eilat", country: null, currency: "ILS", startDate: "2026-04-01", endDate: "2026-04-03",
+  });
+  const dismissed = tripsQueries.createTrip(ws.id, {
+    name: "Skipped", country: null, currency: "EUR", startDate: "2026-03-01", endDate: "2026-03-02",
+  }, "dismissed");
+  const [hotel] = seedTransactions(db, ws.id, [
+    { date: "2026-04-01", currency: "ILS", chargedAmount: -700, description: "Demo Hotel" },
+  ]);
+  const [foreignRow] = seedTransactions(db, other.id, [
+    { date: "2026-04-01", currency: "ILS", chargedAmount: -20, description: "Demo Kiosk" },
+  ]);
+  const countFor = (wsId) =>
+    db.prepare("SELECT COUNT(*) AS n FROM trip_assignments WHERE workspace_id IN (?, ?)").get(wsId, other.id).n;
+
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [hotel, foreignRow], trip.id), { ok: false, reason: "unknown-transactions" });
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [hotel, foreignRow], null), { ok: false, reason: "unknown-transactions" });
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [hotel], dismissed.id), { ok: false, reason: "trip-not-confirmed" });
+  assert.deepEqual(tripsQueries.setTripAssignments(ws.id, [hotel], 999999), { ok: false, reason: "trip-not-found" });
+  assert.equal(countFor(ws.id), 0);
+});

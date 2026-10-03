@@ -84,8 +84,9 @@ Spent does not track investments themselves (balances, returns, portfolios).
 
 ## Agent workflow
 
-- Never create a Git commit unless the user explicitly asks for one.
-- When the user asks for a commit, write a clear conventional commit subject and a body that explains what changed and why.
+- Agents may create Git commits without asking first. Commit only working, verified changes (lint and relevant tests pass), keep each commit scoped to one logical change, and never commit files under `/transactions/` or `/data/`.
+- Write a clear conventional commit subject and a body that explains what changed and why.
+- Do not push, force push, rewrite history, or amend existing commits unless the user explicitly asks.
 - Inspect the exact file, function, command, or error the user names before generalizing.
 - Prefer direct edits and runnable verification over conceptual advice.
 - Preserve existing schema and user-facing terminology unless the user explicitly asks for a rename.

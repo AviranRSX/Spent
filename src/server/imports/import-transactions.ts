@@ -7,6 +7,7 @@ import {
 } from "@/server/db/queries/transactions";
 import { computeDedupHash } from "@/server/lib/dedup";
 import { categorizeWorkspaceTransactions } from "@/server/sync/categorization";
+import { runTripDetectionSafely } from "@/server/trips/detection";
 import { toLocalISODate } from "@/server/lib/date-utils";
 import type { ImportSourceKind, ImportTemplateType } from "@/lib/types";
 import type { ParsedImportTransaction } from "@/lib/imports/xlsx-parser";
@@ -99,6 +100,9 @@ export async function commitImportFiles(
     options.categorize === false
       ? { categorized: 0, aiWarning: null }
       : await categorizeWorkspaceTransactions(workspaceId, workspaceName);
+
+  // After categorization, so Subscriptions rows already count as online.
+  runTripDetectionSafely(workspaceId);
 
   return {
     added,

@@ -73,6 +73,15 @@ Spent does not track investments themselves (balances, returns, portfolios).
 
 **Known issue:** the suggested monthly target in budget suggestions (`getMonthlyBankSpend` in `src/server/db/queries/transactions.ts`) still averages bank expenses only, so it omits card spending and suggests a target that is too low.
 
+### Trips
+
+- A trip is a label on top of a transaction's category, never a category. A restaurant abroad stays `Restaurants` and also belongs to its trip.
+- Membership is computed on read by `resolveTripMembership` in `src/lib/trips/membership.ts` (manual, during, before, then the needs-a-trip queue). Only manual decisions are stored, in `trip_assignments`.
+- Trip totals use `completed` members only, as `-SUM(charged_amount)`. Pending members are listed but not counted.
+- Trip totals exclude the `Transfers` category: those rows are listed but not counted.
+- `original_currency` is raw and part of the dedup hash. Normalize it on read with `normalizeCurrency` in `src/lib/currency.ts`; never rewrite it.
+- Online merchants that must never look like trips live in `src/lib/trips/online-merchants.ts`.
+
 ### Hidden transactions (unused)
 
 `transactions.is_excluded`, the `excluded_merchants` table, and the helpers in `src/server/db/queries/excluded-merchants.ts` come from an unfinished "mark as irrelevant" feature. It was meant to hide the bank's monthly card-bill line, which is now handled by `kind = 'transfer'` detection instead. No UI uses it, imports never apply the rules, and no summary filters on it, so nothing is actually hidden. Do not build on it without asking the user first.
@@ -152,7 +161,7 @@ Upload limits: 20 files, 15 MB per file, 50 MB total (`src/server/imports/import
 ### Categories
 
 - Seeded, per workspace, with descriptions that guide the AI.
-- Two-level hierarchy for expenses: parent groups (Food, Transportation, Lifestyle, Home & Bills, Health & Family, Money Movement) with seeded leaves. Income categories are flat.
+- Two-level hierarchy for expenses: parent groups (Food, Transportation, Lifestyle, Home & Bills, Health & Family, Money Movement, Trips & Travel) with seeded leaves. Income categories are flat.
 - Users can add, edit, and delete categories. Each category has a `budget_mode` of `budgeted` or `tracking`.
 
 ### Workspaces
@@ -169,6 +178,7 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 - `/budget`: monthly budgets per category with pace tracking.
 - `/transactions`: full table with filters, sorting, KPIs, and inline recategorization.
 - `/credit-card`: card-only spending view.
+- `/trips`: one tab per confirmed trip (totals, category breakdown, daily spend, members), suggested trips, and a Needs a trip queue.
 - `/settings/*`: general, data (import), bank, AI, categories (plus statistics review), appearance.
 
 ### Key files
@@ -186,6 +196,8 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 - `src/server/lib/encryption.ts`: AES-256-GCM helpers; generates the key file on first use.
 - `src/server/db/index.ts`: SQLite singleton (globalThis pattern for HMR safety, WAL mode).
 - `src/server/db/queries/transactions.ts`: dedup-on-insert and transaction queries.
+- `src/lib/trips/`: trip membership, detection, totals and validation (pure, node-testable).
+- `src/server/db/queries/trips.ts`, `src/server/trips/detection.ts`: trip queries and suggestion detection.
 - `src/server/ai/factory.ts`: returns `ClaudeProvider`, `OllamaProvider`, or null.
 - `src/server/ai/prompts.ts`: categorization prompt shared by Claude and Ollama.
 

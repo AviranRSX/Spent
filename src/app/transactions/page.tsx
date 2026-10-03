@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { TransactionsPage } from "@/components/transactions/transactions-page";
@@ -11,7 +12,9 @@ export default function Transactions() {
   }
   return (
     <AppShell>
-      <TransactionsPage />
+      <Suspense fallback={null}>
+        <TransactionsPage />
+      </Suspense>
     </AppShell>
   );
 }

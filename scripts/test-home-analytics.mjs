@@ -707,10 +707,11 @@ test("transactions links round-trip month, categories, kind, review and source",
 test("needs attention rows link to the matching /transactions review filters", async () => {
   const { buildNeedsAttentionRows } = await import("../src/lib/home-needs-attention.ts");
 
-  assert.deepEqual(buildNeedsAttentionRows({ uncategorized: 2, lowConfidence: 1, flagged: 3 }, "2026-09"), [
+  assert.deepEqual(buildNeedsAttentionRows({ uncategorized: 2, lowConfidence: 1, flagged: 3, needsTrip: 4 }, "2026-09"), [
     { id: "uncategorized", count: 2, href: "/transactions?month=2026-09&kind=expense&review=uncategorized&source=all" },
     { id: "lowConfidence", count: 1, href: "/transactions?month=2026-09&kind=all&review=lowConfidence&source=all" },
     { id: "flagged", count: 3, href: "/transactions?month=2026-09&kind=all&review=pending&source=all" },
+    { id: "needsTrip", count: 4, href: "/trips?tab=needs-trip" },
   ]);
 });
 
@@ -770,12 +771,13 @@ test("needs attention counts low confidence on the 1-7 scale, skips approved row
 
   assert.deepEqual(
     getNeedsAttentionCounts(workspaceId, { from: "2026-09-01", to: "2026-09-30" }),
-    { uncategorized: 1, lowConfidence: 1, flagged: 2 }
+    { uncategorized: 1, lowConfidence: 1, flagged: 2, needsTrip: 0 }
   );
   assert.deepEqual(getNeedsAttentionCounts(workspaceId), {
     uncategorized: 2,
     lowConfidence: 1,
     flagged: 2,
+    needsTrip: 0,
   });
 });
 

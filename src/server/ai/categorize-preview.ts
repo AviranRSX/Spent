@@ -43,9 +43,15 @@ export interface CategorizePreviewProgress {
   currentEnd?: number;
 }
 
+export interface CategorizePreviewOptions {
+  /** Re-categorize these expense rows instead of the uncategorized backlog. */
+  transactionIds?: number[];
+}
+
 export async function buildCategorizePreview(
   workspaceId: number,
-  onProgress: (progress: CategorizePreviewProgress) => void = () => {}
+  onProgress: (progress: CategorizePreviewProgress) => void = () => {},
+  options: CategorizePreviewOptions = {}
 ): Promise<CategorizePreviewResult> {
   const settings = getAppSettings(workspaceId);
 
@@ -69,10 +75,13 @@ export async function buildCategorizePreview(
 
   const kinds: CategoryKind[] = ["expense", "income"];
   const batchSize = 10;
-  const idsByKind = kinds.map((kind) => ({
-    kind,
-    ids: getUncategorizedIdsByKind(workspaceId, kind),
-  }));
+  const idsByKind: Array<{ kind: CategoryKind; ids: number[] }> =
+    options.transactionIds
+      ? [{ kind: "expense", ids: options.transactionIds }]
+      : kinds.map((kind) => ({
+          kind,
+          ids: getUncategorizedIdsByKind(workspaceId, kind),
+        }));
   const totalUncategorized = idsByKind.reduce(
     (sum, item) => sum + item.ids.length,
     0

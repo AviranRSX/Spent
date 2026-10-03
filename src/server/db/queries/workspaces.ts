@@ -49,26 +49,29 @@ export function countWorkspaces(): number {
 // Cumulative seed list reflecting migrations 001 + 006 (removed "Other")
 // + 008 (added "Salary", kind column) + 010 (brighter colors)
 // + 011 (added 7 more) + 014 (Sports & Hobbies + descriptions)
-// + 023 (income Transfers). Keep in sync.
+// + 023 (income Transfers) + 025 (Trips & Travel group). Keep in sync.
 interface SeedCategory {
   name: string;
   color: string;
   icon: string;
   kind: "expense" | "income";
   description: string;
+  budgetMode?: "budgeted" | "tracking";
 }
 
 const SEED_CATEGORIES: SeedCategory[] = [
   { name: "Groceries", color: "#81B482", icon: "shopping-basket", kind: "expense", description: "Supermarkets, grocery stores, food markets (Shufersal, Rami Levy, Yochananof, Victory, Tiv Taam, Mahane Yehuda vendors). NOT restaurants or prepared meals." },
   { name: "Restaurants", color: "#E89B80", icon: "utensils-crossed", kind: "expense", description: "Sit-down restaurants, takeout, food delivery (Wolt, 10bis when itemized as restaurants), bars and pubs. NOT cafes for daily coffee (Coffee & Cafes) and NOT groceries." },
-  { name: "Transport", color: "#65AFD2", icon: "tram-front", kind: "expense", description: "Public transport (Rav-Kav, Israel Railways), taxis (Gett, Yango), ride-share, fuel stations, parking, car washes, tolls. NOT car insurance (Insurance) and NOT travel airfare (Travel)." },
+  { name: "Transport", color: "#65AFD2", icon: "tram-front", kind: "expense", description: "Public transport (Rav-Kav, Israel Railways), taxis (Gett, Yango), ride-share, fuel stations, parking, car washes, tolls. NOT car insurance (Insurance) and NOT airfare (Flights)." },
   { name: "Shopping", color: "#DCB87A", icon: "shopping-bag", kind: "expense", description: "General retail, clothing, electronics, household goods (Zara, H&M, IKEA, KSP, Castro). NOT groceries and NOT hobby-specific shops (Sports & Hobbies)." },
   { name: "Entertainment", color: "#E499A4", icon: "ticket", kind: "expense", description: "Cinemas, concerts, theater, museums, streaming events, gaming purchases, amusement parks. NOT subscription services (Subscriptions) and NOT sports/hobby activities (Sports & Hobbies)." },
   { name: "Health", color: "#75BCA3", icon: "heart-pulse", kind: "expense", description: "Pharmacies, doctors, dentists, clinics, lab tests, medical equipment, optical (Super-Pharm, Be Pharm, Clalit, Maccabi private clinics). NOT health insurance premiums (Insurance) and NOT gym memberships (Sports & Hobbies)." },
   { name: "Education", color: "#94A0DD", icon: "graduation-cap", kind: "expense", description: "Schools, universities, tuition, online courses (Coursera, Udemy, MasterClass), textbooks, school supplies, exam fees. NOT shooting ranges, gun training, or martial-arts classes (Sports & Hobbies) and NOT music lessons for fun (Sports & Hobbies)." },
   { name: "Bills & Utilities", color: "#B8A98F", icon: "receipt", kind: "expense", description: "Electricity, water, gas, internet, phone bills, municipal arnona, building vaad bayit. NOT streaming or software subscriptions (Subscriptions)." },
   { name: "Subscriptions", color: "#AB9DDB", icon: "refresh-cw", kind: "expense", description: "Recurring digital services: Netflix, Spotify, YouTube Premium, iCloud, Google One, SaaS tools, news subscriptions. NOT physical utility bills (Bills & Utilities)." },
-  { name: "Travel", color: "#64B8D2", icon: "plane", kind: "expense", description: "Flights, hotels, Airbnb, vacation rentals, travel agencies, foreign-currency lodging, car rentals abroad. NOT daily transport (Transport)." },
+  { name: "Travel", color: "#64B8D2", icon: "plane", kind: "expense", description: "Lodging, tours, car rental and travel agencies (hotels, Airbnb, vacation rentals, guided tours, rental cars abroad). NOT flights (Flights), NOT travel insurance (Travel Insurance), and NOT everyday spending abroad: categorize restaurants, groceries, transport and shopping abroad by what they are." },
+  { name: "Flights", color: "#8AA7E0", icon: "plane", kind: "expense", budgetMode: "tracking", description: "Airline tickets and flight booking sites (El Al, Israir, Arkia, Wizz Air, Ryanair, Kiwi.com). NOT hotels or tours (Travel) and NOT travel insurance (Travel Insurance)." },
+  { name: "Travel Insurance", color: "#C79A8B", icon: "shield", kind: "expense", budgetMode: "tracking", description: "Insurance bought for a trip (travel insurance policies, travel health cover, trip cancellation cover). NOT car, home, health or life premiums (Insurance)." },
   { name: "Cash & ATM", color: "#DBC27F", icon: "banknote", kind: "expense", description: "ATM withdrawals, cash advances, currency exchange. Often labeled bankomat / כספומט." },
   { name: "Transfers", color: "#A2AAC2", icon: "arrow-left-right", kind: "expense", description: "Bank-to-bank transfers, Bit/PayBox to people, internal moves." },
   { name: "Insurance", color: "#E59A99", icon: "shield", kind: "expense", description: "Car, home, health, life insurance premiums, leumit/menora/clal/migdal insurance lines. NOT medical visit copays (Health)." },
@@ -85,6 +88,16 @@ const SEED_CATEGORIES: SeedCategory[] = [
   { name: "Investment Income", color: "#7B85C9", icon: "trending-up", kind: "income", description: "Dividends, interest, stock sale proceeds, crypto sale proceeds." },
   { name: "Refunds & Reimbursements", color: "#7DC8B3", icon: "rotate-ccw", kind: "income", description: "Returns, expense reimbursements, insurance payouts, refunds from cancellations." },
 ];
+
+// Mirrors migration 025. New workspaces get this one group so trips work
+// out of the box; the other seeded groups only exist in migrated workspaces.
+const TRIPS_PARENT = {
+  name: "Trips & Travel",
+  color: "#4FA3A5",
+  icon: "plane",
+  description: "Rollup of trip costs: flights, lodging and tours, travel insurance.",
+} as const;
+const TRIPS_CHILDREN = ["Flights", "Travel", "Travel Insurance"] as const;
 
 function slugify(name: string): string {
   return name
@@ -126,11 +139,24 @@ export function createWorkspace(name: string): Workspace {
     const id = Number(result.lastInsertRowid);
 
     const insertCat = db.prepare(
-      "INSERT INTO categories (workspace_id, name, color, icon, kind, description) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO categories (workspace_id, name, color, icon, kind, budget_mode, description) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
     for (const c of SEED_CATEGORIES) {
-      insertCat.run(id, c.name, c.color, c.icon, c.kind, c.description);
+      insertCat.run(id, c.name, c.color, c.icon, c.kind, c.budgetMode ?? "budgeted", c.description);
     }
+
+    const tripsParentId = Number(
+      db
+        .prepare(
+          "INSERT INTO categories (workspace_id, parent_id, name, color, icon, kind, budget_mode, description) VALUES (?, NULL, ?, ?, ?, 'expense', 'tracking', ?)"
+        )
+        .run(id, TRIPS_PARENT.name, TRIPS_PARENT.color, TRIPS_PARENT.icon, TRIPS_PARENT.description)
+        .lastInsertRowid
+    );
+    const childPlaceholders = TRIPS_CHILDREN.map(() => "?").join(",");
+    db.prepare(
+      `UPDATE categories SET parent_id = ? WHERE workspace_id = ? AND kind = 'expense' AND name IN (${childPlaceholders})`
+    ).run(tripsParentId, id, ...TRIPS_CHILDREN);
     return id;
   });
 

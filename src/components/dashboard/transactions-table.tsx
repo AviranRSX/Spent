@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import {
@@ -27,8 +28,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   MoreHorizontal,
+  Plane,
   HelpCircle,
   Check,
   ArrowDownRight,
@@ -43,7 +46,13 @@ import {
   setTransactionKind,
   approveTransactionCategory,
   getCategories,
+  getTripMemberships,
 } from "@/lib/api";
+import { TripBulkBar } from "@/components/trips/trip-bulk-bar";
+import { TripCategoryPrompt } from "@/components/trips/trip-category-prompt";
+import { TRIP_KEYS, useInvalidateTrips } from "@/components/trips/use-trip-actions";
+import { isTravelCategoryName, tripPromptSuggestions } from "@/lib/trips/prompt";
+import type { TripRef } from "@/lib/trips/types";
 import { translateCategoryName, translateProviderName } from "@/lib/i18n-data";
 import {
   getAccountDisplayLabel,
@@ -122,6 +131,40 @@ export function TransactionsTable({
   const locale = useLocale() as Locale;
   const queryClient = useQueryClient();
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const tTrips = useTranslations("trips");
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<number>>(() => new Set());
+  const pageIds = transactions.map((txn) => txn.id);
+  // Selection is scoped to the visible page: ids left over from another page
+  // or filter are simply not shown or acted on.
+  const selectedOnPage = transactions.filter((txn) => selectedIds.has(txn.id));
+  const allOnPageSelected = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
+  const someOnPageSelected = selectedOnPage.length > 0 && !allOnPageSelected;
+
+  const toggleRow = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+  const togglePage = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(pageIds) : new Set());
+  };
+
+  const invalidateTrips = useInvalidateTrips();
+  const [tripPrompt, setTripPrompt] = useState<{
+    transaction: TransactionWithCategory;
+    categoryName: string;
+    suggestions: TripRef[];
+  } | null>(null);
+
+  const tripInfoQuery = useQuery({
+    queryKey: [...TRIP_KEYS.memberships, pageIds],
+    queryFn: () => getTripMemberships(pageIds),
+    enabled: pageIds.length > 0,
+  });
+  const tripInfo = tripInfoQuery.data ?? {};
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const otherKinds: Record<Kind, Array<{ value: Kind; label: string }>> = {
@@ -139,13 +182,26 @@ export function TransactionsTable({
     ],
   };
 
-  const handleCategoryChange = async (txnId: number, categoryId: number) => {
-    setUpdatingId(txnId);
+  const handleCategoryChange = async (txn: TransactionWithCategory, category: Category) => {
+    setUpdatingId(txn.id);
     try {
-      await updateTransactionCategory(txnId, categoryId);
+      await updateTransactionCategory(txn.id, category.id);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["summary"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
+      // A category change can move a row into or out of the needs-a-trip queue.
+      invalidateTrips();
+      if (isTravelCategoryName(category.name)) {
+        try {
+          const info = await getTripMemberships([txn.id]);
+          const suggestions = tripPromptSuggestions(category.name, info[txn.id]);
+          if (suggestions) {
+            setTripPrompt({ transaction: txn, categoryName: category.name, suggestions });
+          }
+        } catch {
+          // The category is saved; the trip prompt is optional.
+        }
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -159,6 +215,7 @@ export function TransactionsTable({
       queryClient.invalidateQueries({ queryKey: ["summary"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+      invalidateTrips();
     } finally {
       setUpdatingId(null);
     }
@@ -303,371 +360,420 @@ export function TransactionsTable({
   };
 
   return (
-    <Card className="rounded-2xl border border-border bg-card shadow-none">
-      <CardHeader>
-        <div className="flex items-center justify-between gap-4">
-          <CardTitle className="font-serif text-2xl font-normal">
-            {t("pageTitle")}
-          </CardTitle>
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder={t("search")}
-              value={search}
-              onChange={(e) => {
-                onSearchChange(e.target.value);
-                onPageChange(0);
-              }}
-              className="h-8 w-[200px]"
-            />
-            {showAccountFilter ? (
+    <>
+      <Card className="rounded-2xl border border-border bg-card shadow-none">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="font-serif text-2xl font-normal">
+              {t("pageTitle")}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder={t("search")}
+                value={search}
+                onChange={(e) => {
+                  onSearchChange(e.target.value);
+                  onPageChange(0);
+                }}
+                className="h-8 w-[200px]"
+              />
+              {showAccountFilter ? (
+                <TransactionMultiFilter
+                  label={t("filterAccount")}
+                  icon={Wallet}
+                  displayValue={accountDisplayValue}
+                  triggerClassName="w-[200px]"
+                  selectAllLabel={t("filterSelectAll")}
+                  clearLabel={t("filterClearSelection")}
+                  onSelectAll={() => onAccountFilterChange(allAccountIds)}
+                  onClear={() => onAccountFilterChange([])}
+                >
+                  {accountOptions.map(({ integration, info, primary }) => (
+                    <MultiFilterOption
+                      key={integration.id}
+                      selected={accountFilter.includes(integration.id)}
+                      onToggle={() =>
+                        onAccountFilterChange(
+                          toggleFilterId(accountFilter, integration.id)
+                        )
+                      }
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        {info ? (
+                          <ProviderBadge
+                            color={info.color}
+                            name={primary}
+                            domain={info.domain}
+                            size={16}
+                            radius={5}
+                          />
+                        ) : null}
+                        <span className="truncate">{primary}</span>
+                      </div>
+                    </MultiFilterOption>
+                  ))}
+                </TransactionMultiFilter>
+              ) : null}
               <TransactionMultiFilter
-                label={t("filterAccount")}
-                icon={Wallet}
-                displayValue={accountDisplayValue}
-                triggerClassName="w-[200px]"
+                label={t("filterCategory")}
+                icon={Tags}
+                displayValue={categoryDisplayValue}
                 selectAllLabel={t("filterSelectAll")}
                 clearLabel={t("filterClearSelection")}
-                onSelectAll={() => onAccountFilterChange(allAccountIds)}
-                onClear={() => onAccountFilterChange([])}
+                onSelectAll={() => onCategoryFilterChange(allCategoryIds)}
+                onClear={() => onCategoryFilterChange([])}
               >
-                {accountOptions.map(({ integration, info, primary }) => (
-                  <MultiFilterOption
-                    key={integration.id}
-                    selected={accountFilter.includes(integration.id)}
-                    onToggle={() =>
-                      onAccountFilterChange(
-                        toggleFilterId(accountFilter, integration.id)
-                      )
-                    }
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      {info ? (
-                        <ProviderBadge
-                          color={info.color}
-                          name={primary}
-                          domain={info.domain}
-                          size={16}
-                          radius={5}
-                        />
-                      ) : null}
-                      <span className="truncate">{primary}</span>
-                    </div>
-                  </MultiFilterOption>
-                ))}
+                {renderCategoryFilterOptions(null, 0)}
               </TransactionMultiFilter>
-            ) : null}
-            <TransactionMultiFilter
-              label={t("filterCategory")}
-              icon={Tags}
-              displayValue={categoryDisplayValue}
-              selectAllLabel={t("filterSelectAll")}
-              clearLabel={t("filterClearSelection")}
-              onSelectAll={() => onCategoryFilterChange(allCategoryIds)}
-              onClear={() => onCategoryFilterChange([])}
-            >
-              {renderCategoryFilterOptions(null, 0)}
-            </TransactionMultiFilter>
-            {hasActiveFilters ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
-                onClick={handleClearFilters}
-              >
-                {t("filterClear")}
-              </Button>
-            ) : null}
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
+                  onClick={handleClearFilters}
+                >
+                  {t("filterClear")}
+                </Button>
+              ) : null}
+            </div>
           </div>
-        </div>
-        {hasActiveFilters || search.trim().length > 0 ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t("filterScopedToList")}
-          </p>
-        ) : null}
-      </CardHeader>
-      <CardContent
-        className={cn(
-          isFetching &&
-            !loading &&
-            "opacity-60 transition-opacity duration-200"
-        )}
-      >
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            {search || categoryFilter.length > 0 || accountFilter.length > 0
-              ? t("emptyWithFilters")
-              : t("emptyNoData")}
-          </div>
-        ) : (
-          <>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[32px]" />
-                  <SortableTableHead
-                    label={t("headerDate")}
-                    field="date"
-                    activeField={sortField}
-                    activeOrder={sortOrder}
-                    onSort={onSortChange}
-                    className="w-[100px]"
-                    sortAscLabel={t("sortAsc")}
-                    sortDescLabel={t("sortDesc")}
-                  />
-                  <SortableTableHead
-                    label={t("headerDescription")}
-                    field="description"
-                    activeField={sortField}
-                    activeOrder={sortOrder}
-                    onSort={onSortChange}
-                    sortAscLabel={t("sortAsc")}
-                    sortDescLabel={t("sortDesc")}
-                  />
-                  <SortableTableHead
-                    label={t("headerCategory")}
-                    field="category_name"
-                    activeField={sortField}
-                    activeOrder={sortOrder}
-                    onSort={onSortChange}
-                    className="w-[150px]"
-                    sortAscLabel={t("sortAsc")}
-                    sortDescLabel={t("sortDesc")}
-                  />
-                  <SortableTableHead
-                    label={t("headerAccount")}
-                    field="account"
-                    activeField={sortField}
-                    activeOrder={sortOrder}
-                    onSort={onSortChange}
-                    className="hidden w-[130px] md:table-cell"
-                    sortAscLabel={t("sortAsc")}
-                    sortDescLabel={t("sortDesc")}
-                  />
-                  <SortableTableHead
-                    label={t("headerAmount")}
-                    field="charged_amount"
-                    activeField={sortField}
-                    activeOrder={sortOrder}
-                    onSort={onSortChange}
-                    className="w-[120px]"
-                    align="end"
-                    sortAscLabel={t("sortAsc")}
-                    sortDescLabel={t("sortDesc")}
-                  />
-                  <TableHead className="w-[40px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((txn) => {
-                  const isIncome = txn.kind === "income";
-                  const directionColor = isIncome
-                    ? "var(--status-on-track)"
-                    : "var(--status-over)";
-                  const categoryKind: Kind =
-                    txn.kind === "income" ? "income" : "expense";
-                  const categoryName = txn.categoryName
-                    ? translateCategoryName(txn.categoryName, tCat)
-                    : t("rowUncategorized");
-                  return (
-                    <TableRow
-                      key={txn.id}
-                      className="transition-colors duration-200 hover:bg-muted/50"
-                    >
-                      <TableCell>
-                        <div style={{ color: directionColor }}>
-                          {isIncome ? (
-                            <ArrowUpRight className="h-4 w-4" />
-                          ) : (
-                            <ArrowDownRight className="h-4 w-4" />
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm tabular-nums text-muted-foreground">
-                        {formatDate(txn.date)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium">{txn.description}</div>
-                          {txn.needsReview && (
-                            <span
-                              className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
-                              style={{
-                                backgroundColor:
-                                  "color-mix(in oklch, var(--status-heads-up) 18%, transparent)",
-                                color: "var(--status-heads-up)",
-                              }}
-                              title={
-                                txn.aiConfidence != null
-                                  ? t("rowReviewTooltipConfidence", { score: txn.aiConfidence })
-                                  : t("rowReviewTooltipUnsure")
-                              }
-                            >
-                              <HelpCircle className="h-3 w-3" />
-                              {t("rowReview")}
-                              {txn.aiConfidence != null && (
-                                <span className="ms-0.5 tabular-nums">
-                                  {txn.aiConfidence}/7
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </div>
-                        {txn.memo && (
-                          <div className="text-xs text-muted-foreground">
-                            {txn.memo}
+          {hasActiveFilters || search.trim().length > 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {t("filterScopedToList")}
+            </p>
+          ) : null}
+        </CardHeader>
+        <CardContent
+          className={cn(
+            isFetching &&
+              !loading &&
+              "opacity-60 transition-opacity duration-200"
+          )}
+        >
+          {loading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              {search || categoryFilter.length > 0 || accountFilter.length > 0
+                ? t("emptyWithFilters")
+                : t("emptyNoData")}
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[36px]">
+                      <Checkbox
+                        checked={allOnPageSelected}
+                        indeterminate={someOnPageSelected}
+                        onCheckedChange={(checked) => togglePage(checked)}
+                        aria-label={tTrips("bulk.selectPage")}
+                      />
+                    </TableHead>
+                    <TableHead className="w-[32px]" />
+                    <SortableTableHead
+                      label={t("headerDate")}
+                      field="date"
+                      activeField={sortField}
+                      activeOrder={sortOrder}
+                      onSort={onSortChange}
+                      className="w-[100px]"
+                      sortAscLabel={t("sortAsc")}
+                      sortDescLabel={t("sortDesc")}
+                    />
+                    <SortableTableHead
+                      label={t("headerDescription")}
+                      field="description"
+                      activeField={sortField}
+                      activeOrder={sortOrder}
+                      onSort={onSortChange}
+                      sortAscLabel={t("sortAsc")}
+                      sortDescLabel={t("sortDesc")}
+                    />
+                    <SortableTableHead
+                      label={t("headerCategory")}
+                      field="category_name"
+                      activeField={sortField}
+                      activeOrder={sortOrder}
+                      onSort={onSortChange}
+                      className="w-[150px]"
+                      sortAscLabel={t("sortAsc")}
+                      sortDescLabel={t("sortDesc")}
+                    />
+                    <SortableTableHead
+                      label={t("headerAccount")}
+                      field="account"
+                      activeField={sortField}
+                      activeOrder={sortOrder}
+                      onSort={onSortChange}
+                      className="hidden w-[130px] md:table-cell"
+                      sortAscLabel={t("sortAsc")}
+                      sortDescLabel={t("sortDesc")}
+                    />
+                    <SortableTableHead
+                      label={t("headerAmount")}
+                      field="charged_amount"
+                      activeField={sortField}
+                      activeOrder={sortOrder}
+                      onSort={onSortChange}
+                      className="w-[120px]"
+                      align="end"
+                      sortAscLabel={t("sortAsc")}
+                      sortDescLabel={t("sortDesc")}
+                    />
+                    <TableHead className="w-[40px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((txn) => {
+                    const isIncome = txn.kind === "income";
+                    const directionColor = isIncome
+                      ? "var(--status-on-track)"
+                      : "var(--status-over)";
+                    const categoryKind: Kind =
+                      txn.kind === "income" ? "income" : "expense";
+                    const categoryName = txn.categoryName
+                      ? translateCategoryName(txn.categoryName, tCat)
+                      : t("rowUncategorized");
+                    const rowTrip = tripInfo[txn.id];
+                    const rowSelected = selectedIds.has(txn.id);
+                    return (
+                      <TableRow
+                        key={txn.id}
+                        data-state={rowSelected ? "selected" : undefined}
+                        className="transition-colors duration-200 hover:bg-muted/50"
+                      >
+                        <TableCell className="w-[36px]">
+                          <Checkbox
+                            checked={rowSelected}
+                            onCheckedChange={(checked) => toggleRow(txn.id, checked)}
+                            aria-label={tTrips("bulk.selectRow")}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div style={{ color: directionColor }}>
+                            {isIncome ? (
+                              <ArrowUpRight className="h-4 w-4" />
+                            ) : (
+                              <ArrowDownRight className="h-4 w-4" />
+                            )}
                           </div>
-                        )}
-                        {txn.type === "installments" &&
-                          txn.installmentNumber &&
-                          txn.installmentTotal && (
-                            <div className="text-xs text-muted-foreground">
-                              {t("rowInstallment", {
-                                n: txn.installmentNumber,
-                                total: txn.installmentTotal,
-                              })}
-                            </div>
-                          )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              className="inline-flex"
-                              disabled={updatingId === txn.id}
-                            >
-                              <Badge
-                                variant="outline"
-                                className="cursor-pointer transition-colors hover:bg-accent"
-                                style={
-                                  txn.categoryColor
-                                    ? {
-                                        borderColor: txn.categoryColor + "40",
-                                        backgroundColor: txn.categoryColor + "15",
-                                        color: txn.categoryColor,
-                                      }
-                                    : undefined
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums text-muted-foreground">
+                          {formatDate(txn.date)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">{txn.description}</div>
+                            {rowTrip?.kind === "member" ? (
+                              <Link
+                                href={`/trips?trip=${rowTrip.tripId}`}
+                                title={tTrips("badge.label", { name: rowTrip.tripName })}
+                                className="inline-flex min-w-0 max-w-[160px] items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              >
+                                <Plane className="size-3 shrink-0" aria-hidden="true" />
+                                <span dir="auto" className="min-w-0 truncate text-start">
+                                  {rowTrip.tripName}
+                                </span>
+                              </Link>
+                            ) : null}
+                            {txn.needsReview && (
+                              <span
+                                className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                                style={{
+                                  backgroundColor:
+                                    "color-mix(in oklch, var(--status-heads-up) 18%, transparent)",
+                                  color: "var(--status-heads-up)",
+                                }}
+                                title={
+                                  txn.aiConfidence != null
+                                    ? t("rowReviewTooltipConfidence", { score: txn.aiConfidence })
+                                    : t("rowReviewTooltipUnsure")
                                 }
                               >
-                                {categoryName}
-                              </Badge>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              {categoriesForKind(categoryKind).map((cat) => (
-                                <DropdownMenuItem
-                                  key={cat.id}
-                                  onClick={() =>
-                                    handleCategoryChange(txn.id, cat.id)
+                                <HelpCircle className="h-3 w-3" />
+                                {t("rowReview")}
+                                {txn.aiConfidence != null && (
+                                  <span className="ms-0.5 tabular-nums">
+                                    {txn.aiConfidence}/7
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          {txn.memo && (
+                            <div className="text-xs text-muted-foreground">
+                              {txn.memo}
+                            </div>
+                          )}
+                          {txn.type === "installments" &&
+                            txn.installmentNumber &&
+                            txn.installmentTotal && (
+                              <div className="text-xs text-muted-foreground">
+                                {t("rowInstallment", {
+                                  n: txn.installmentNumber,
+                                  total: txn.installmentTotal,
+                                })}
+                              </div>
+                            )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger
+                                className="inline-flex"
+                                disabled={updatingId === txn.id}
+                              >
+                                <Badge
+                                  variant="outline"
+                                  className="cursor-pointer transition-colors hover:bg-accent"
+                                  style={
+                                    txn.categoryColor
+                                      ? {
+                                          borderColor: txn.categoryColor + "40",
+                                          backgroundColor: txn.categoryColor + "15",
+                                          color: txn.categoryColor,
+                                        }
+                                      : undefined
                                   }
                                 >
-                                  <div
-                                    className="me-2 h-2 w-2 rounded-full"
-                                    style={{ backgroundColor: cat.color }}
-                                  />
-                                  {translateCategoryName(cat.name, tCat)}
+                                  {categoryName}
+                                </Badge>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                {categoriesForKind(categoryKind).map((cat) => (
+                                  <DropdownMenuItem
+                                    key={cat.id}
+                                    onClick={() =>
+                                      handleCategoryChange(txn, cat)
+                                    }
+                                  >
+                                    <div
+                                      className="me-2 h-2 w-2 rounded-full"
+                                      style={{ backgroundColor: cat.color }}
+                                    />
+                                    {translateCategoryName(cat.name, tCat)}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                            {txn.needsReview && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleApprove(txn.id)}
+                                disabled={updatingId === txn.id}
+                                className="h-6 gap-1 px-2 text-[11px] font-medium"
+                                style={{
+                                  borderColor:
+                                    "color-mix(in oklch, var(--status-on-track) 35%, transparent)",
+                                  color: "var(--status-on-track)",
+                                }}
+                                title={t("rowApproveTooltip")}
+                              >
+                                <Check className="h-3 w-3" />
+                                {t("rowApprove")}
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          <TransactionSourceCell
+                            provider={txn.provider}
+                            accountLabel={txn.accountLabel}
+                            accountNumber={txn.accountNumber}
+                            showAccountNumber={showAccountNumber}
+                          />
+                        </TableCell>
+                        <TableCell
+                          className="text-end font-medium tabular-nums"
+                          style={{ color: directionColor }}
+                        >
+                          {formatCurrency(txn.chargedAmount, "ILS", locale)}
+                        </TableCell>
+                        <TableCell className="text-end">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                              disabled={updatingId === txn.id}
+                              aria-label={t("rowActions")}
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {otherKinds[txn.kind].map((opt) => (
+                                <DropdownMenuItem
+                                  key={opt.value}
+                                  onClick={() => handleKindChange(txn.id, opt.value)}
+                                >
+                                  {opt.label}
                                 </DropdownMenuItem>
                               ))}
                             </DropdownMenuContent>
                           </DropdownMenu>
-                          {txn.needsReview && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleApprove(txn.id)}
-                              disabled={updatingId === txn.id}
-                              className="h-6 gap-1 px-2 text-[11px] font-medium"
-                              style={{
-                                borderColor:
-                                  "color-mix(in oklch, var(--status-on-track) 35%, transparent)",
-                                color: "var(--status-on-track)",
-                              }}
-                              title={t("rowApproveTooltip")}
-                            >
-                              <Check className="h-3 w-3" />
-                              {t("rowApprove")}
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <TransactionSourceCell
-                          provider={txn.provider}
-                          accountLabel={txn.accountLabel}
-                          accountNumber={txn.accountNumber}
-                          showAccountNumber={showAccountNumber}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className="text-end font-medium tabular-nums"
-                        style={{ color: directionColor }}
-                      >
-                        {formatCurrency(txn.chargedAmount, "ILS", locale)}
-                      </TableCell>
-                      <TableCell className="text-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                            disabled={updatingId === txn.id}
-                            aria-label={t("rowActions")}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {otherKinds[txn.kind].map((opt) => (
-                              <DropdownMenuItem
-                                key={opt.value}
-                                onClick={() => handleKindChange(txn.id, opt.value)}
-                              >
-                                {opt.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4">
-                <span className="text-xs text-muted-foreground">
-                  {t("paginationRange", {
-                    from: page * PAGE_SIZE + 1,
-                    to: Math.min((page + 1) * PAGE_SIZE, total),
-                    total,
+                        </TableCell>
+                      </TableRow>
+                    );
                   })}
-                </span>
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onPageChange(page - 1)}
-                    disabled={page === 0}
-                  >
-                    {t("previous")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onPageChange(page + 1)}
-                    disabled={page >= totalPages - 1}
-                  >
-                    {t("next")}
-                  </Button>
+                </TableBody>
+              </Table>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4">
+                  <span className="text-xs text-muted-foreground">
+                    {t("paginationRange", {
+                      from: page * PAGE_SIZE + 1,
+                      to: Math.min((page + 1) * PAGE_SIZE, total),
+                      total,
+                    })}
+                  </span>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPageChange(page - 1)}
+                      disabled={page === 0}
+                    >
+                      {t("previous")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onPageChange(page + 1)}
+                      disabled={page >= totalPages - 1}
+                    >
+                      {t("next")}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+      {selectedOnPage.length > 0 ? (
+        <>
+          <div aria-hidden="true" className="h-16" />
+          <TripBulkBar
+            transactions={selectedOnPage}
+            onDone={() => setSelectedIds(new Set())}
+          />
+        </>
+      ) : null}
+      {tripPrompt ? (
+        <TripCategoryPrompt
+          transaction={tripPrompt.transaction}
+          categoryName={tripPrompt.categoryName}
+          suggestions={tripPrompt.suggestions}
+          onClose={() => setTripPrompt(null)}
+        />
+      ) : null}
+    </>
   );
 }

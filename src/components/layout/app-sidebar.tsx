@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Wallet,
   ArrowLeftRight,
   CreditCard,
+  Plane,
   Settings as SettingsIcon,
   Star,
 } from "lucide-react";
@@ -19,10 +21,14 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { TRIP_KEYS } from "@/components/trips/use-trip-actions";
+import { useIsHydrated } from "@/hooks/use-is-hydrated";
+import { getTrips } from "@/lib/api";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface NavDef {
@@ -57,6 +63,12 @@ const NAV: NavDef[] = [
     Icon: CreditCard,
     match: (p: string) => p.startsWith("/credit-card"),
   },
+  {
+    href: "/trips",
+    labelKey: "trips",
+    Icon: Plane,
+    match: (p: string) => p.startsWith("/trips"),
+  },
 ];
 
 const FOOTER_NAV: NavDef[] = [
@@ -71,6 +83,9 @@ const FOOTER_NAV: NavDef[] = [
 export function AppSidebar() {
   const pathname = usePathname();
   const t = useTranslations("nav");
+  const tripsQuery = useQuery({ queryKey: TRIP_KEYS.overview, queryFn: getTrips });
+  const hydrated = useIsHydrated();
+  const needsTripCount = hydrated ? (tripsQuery.data?.needsTripCount ?? 0) : 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -119,6 +134,11 @@ export function AppSidebar() {
                       isActive={item.match(pathname)}
                       tooltip={label}
                     />
+                    {item.href === "/trips" && needsTripCount > 0 ? (
+                      <SidebarMenuBadge className="rounded-full bg-[color-mix(in_oklch,var(--status-heads-up)_22%,transparent)] text-foreground">
+                        {needsTripCount}
+                      </SidebarMenuBadge>
+                    ) : null}
                   </SidebarMenuItem>
                 );
               })}

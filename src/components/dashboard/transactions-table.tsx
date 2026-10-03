@@ -49,7 +49,10 @@ import {
   getTripMemberships,
 } from "@/lib/api";
 import { TripBulkBar } from "@/components/trips/trip-bulk-bar";
-import { TRIP_KEYS } from "@/components/trips/use-trip-actions";
+import { TripCategoryPrompt } from "@/components/trips/trip-category-prompt";
+import { TRIP_KEYS, useInvalidateTrips } from "@/components/trips/use-trip-actions";
+import { isTravelCategoryName, tripPromptSuggestions } from "@/lib/trips/prompt";
+import type { TripRef } from "@/lib/trips/types";
 import { translateCategoryName, translateProviderName } from "@/lib/i18n-data";
 import {
   getAccountDisplayLabel,
@@ -149,6 +152,13 @@ export function TransactionsTable({
     setSelectedIds(checked ? new Set(pageIds) : new Set());
   };
 
+  const invalidateTrips = useInvalidateTrips();
+  const [tripPrompt, setTripPrompt] = useState<{
+    transaction: TransactionWithCategory;
+    categoryName: string;
+    suggestions: TripRef[];
+  } | null>(null);
+
   const tripInfoQuery = useQuery({
     queryKey: [...TRIP_KEYS.memberships, pageIds],
     queryFn: () => getTripMemberships(pageIds),
@@ -172,13 +182,26 @@ export function TransactionsTable({
     ],
   };
 
-  const handleCategoryChange = async (txnId: number, categoryId: number) => {
-    setUpdatingId(txnId);
+  const handleCategoryChange = async (txn: TransactionWithCategory, category: Category) => {
+    setUpdatingId(txn.id);
     try {
-      await updateTransactionCategory(txnId, categoryId);
+      await updateTransactionCategory(txn.id, category.id);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["summary"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
+      // A category change can move a row into or out of the needs-a-trip queue.
+      invalidateTrips();
+      if (isTravelCategoryName(category.name)) {
+        try {
+          const info = await getTripMemberships([txn.id]);
+          const suggestions = tripPromptSuggestions(category.name, info[txn.id]);
+          if (suggestions) {
+            setTripPrompt({ transaction: txn, categoryName: category.name, suggestions });
+          }
+        } catch {
+          // The category is saved; the trip prompt is optional.
+        }
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -192,6 +215,7 @@ export function TransactionsTable({
       queryClient.invalidateQueries({ queryKey: ["summary"] });
       queryClient.invalidateQueries({ queryKey: ["transactions-summary"] });
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+      invalidateTrips();
     } finally {
       setUpdatingId(null);
     }
@@ -627,7 +651,7 @@ export function TransactionsTable({
                                   <DropdownMenuItem
                                     key={cat.id}
                                     onClick={() =>
-                                      handleCategoryChange(txn.id, cat.id)
+                                      handleCategoryChange(txn, cat)
                                     }
                                   >
                                     <div
@@ -741,6 +765,14 @@ export function TransactionsTable({
             onDone={() => setSelectedIds(new Set())}
           />
         </>
+      ) : null}
+      {tripPrompt ? (
+        <TripCategoryPrompt
+          transaction={tripPrompt.transaction}
+          categoryName={tripPrompt.categoryName}
+          suggestions={tripPrompt.suggestions}
+          onClose={() => setTripPrompt(null)}
+        />
       ) : null}
     </>
   );

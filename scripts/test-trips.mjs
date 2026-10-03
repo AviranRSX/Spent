@@ -523,3 +523,19 @@ test("draft trips take the span, the most common foreign currency and its countr
     { name: "Trip May 2026", country: null, currency: "ILS", startDate: "2026-05-02", endDate: "2026-05-02" }
   );
 });
+
+const { isTravelCategoryName, tripPromptSuggestions } = await import("../src/lib/trips/prompt.ts");
+
+test("the category prompt opens only for travel categories still waiting for a trip", () => {
+  const japanRef = { id: 2, name: "Japan", country: "Japan", currency: "JPY", startDate: "2026-08-01", endDate: "2026-08-10" };
+  const queued = { kind: "queue", suggestions: [japanRef] };
+  assert.equal(isTravelCategoryName("Flights"), true);
+  assert.equal(isTravelCategoryName("Restaurants"), false);
+  assert.equal(isTravelCategoryName(null), false);
+  assert.deepEqual(tripPromptSuggestions("Flights", queued), [japanRef]);
+  assert.deepEqual(tripPromptSuggestions("Travel Insurance", { kind: "queue", suggestions: [] }), []);
+  assert.equal(tripPromptSuggestions("Restaurants", queued), null);
+  assert.equal(tripPromptSuggestions("Travel", { kind: "member", tripId: 2, tripName: "Japan", reason: "during" }), null);
+  assert.equal(tripPromptSuggestions("Travel", { kind: "none", manualNoTrip: true }), null);
+  assert.equal(tripPromptSuggestions("Travel", undefined), null);
+});

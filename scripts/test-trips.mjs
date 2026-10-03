@@ -326,3 +326,158 @@ test("categorization prompts tell the AI to categorize spending abroad by what i
     );
   }
 });
+
+const { summarizeTrip, tripPhase } = await import("../src/lib/trips/summary.ts");
+const {
+  parseTripInput,
+  parseTripPatch,
+  parseTransactionIds,
+  parseAssignmentBody,
+} = await import("../src/lib/trips/validation.ts");
+
+function member(id, date, chargedAmount, status, category) {
+  return {
+    id,
+    date,
+    chargedAmount,
+    status,
+    categoryId: category?.id ?? null,
+    categoryName: category?.name ?? null,
+    categoryColor: category?.color ?? null,
+    parentName: category?.parentName ?? null,
+    parentColor: category?.parentColor ?? null,
+  };
+}
+
+const travelCat = { id: 5, name: "Travel", color: "#64B8D2", parentName: "Trips & Travel", parentColor: "#4FA3A5" };
+const restaurantsCat = { id: 2, name: "Restaurants", color: "#E89B80", parentName: "Food", parentColor: "#E7A875" };
+const groceriesCat = { id: 1, name: "Groceries", color: "#81B482", parentName: "Food", parentColor: "#E7A875" };
+
+test("summarizeTrip counts completed members, splits before and during, and builds a daily series", () => {
+  const totals = summarizeTrip({ startDate: "2026-04-10", endDate: "2026-04-15" }, [
+    member(1, "2026-02-01", -900, "completed", travelCat),
+    member(2, "2026-04-10", -200, "completed", restaurantsCat),
+    member(3, "2026-04-10", -100, "completed", groceriesCat),
+    member(4, "2026-04-12", -300, "completed", restaurantsCat),
+    member(5, "2026-04-12", 50, "completed", restaurantsCat),
+    member(6, "2026-04-13", -400, "pending", restaurantsCat),
+    member(7, "2026-04-16T09:00:00.000Z", -60, "completed", null),
+  ]);
+
+  assert.equal(totals.total, 1510);
+  assert.equal(totals.days, 6);
+  assert.equal(totals.perDay, 251.67);
+  assert.equal(totals.before, 900);
+  assert.equal(totals.during, 610);
+  assert.equal(totals.memberCount, 7);
+  assert.equal(totals.pendingCount, 1);
+  assert.deepEqual(
+    totals.breakdown.map((s) => [s.name, s.amount, s.share, s.count, s.parentColor]),
+    [
+      ["Travel", 900, 0.596, 1, "#4FA3A5"],
+      ["Restaurants", 450, 0.298, 3, "#E7A875"],
+      ["Groceries", 100, 0.0662, 1, "#E7A875"],
+      [null, 60, 0.0397, 1, null],
+    ]
+  );
+  assert.deepEqual(totals.daily, [
+    { date: "2026-04-10", amount: 300 },
+    { date: "2026-04-11", amount: 0 },
+    { date: "2026-04-12", amount: 250 },
+    { date: "2026-04-13", amount: 0 },
+    { date: "2026-04-14", amount: 0 },
+    { date: "2026-04-15", amount: 0 },
+    { date: "2026-04-16", amount: 60 },
+  ]);
+  assert.equal(tripPhase("2026-04-09", "2026-04-10"), "before");
+  assert.equal(tripPhase("2026-04-10T00:00:00.000Z", "2026-04-10"), "during");
+});
+
+test("summarizeTrip stays finite when everything is pending or refunded", () => {
+  const pendingOnly = summarizeTrip({ startDate: "2026-05-01", endDate: "2026-05-02" }, [
+    member(1, "2026-05-01", -100, "pending", restaurantsCat),
+  ]);
+  assert.equal(pendingOnly.total, 0);
+  assert.equal(pendingOnly.perDay, 0);
+  assert.deepEqual(pendingOnly.breakdown, []);
+  assert.deepEqual(pendingOnly.daily, [
+    { date: "2026-05-01", amount: 0 },
+    { date: "2026-05-02", amount: 0 },
+  ]);
+
+  const refundOnly = summarizeTrip({ startDate: "2026-05-01", endDate: "2026-05-01" }, [
+    member(2, "2026-05-01", 50, "completed", restaurantsCat),
+  ]);
+  assert.equal(refundOnly.total, -50);
+  assert.equal(refundOnly.perDay, -50);
+  assert.equal(refundOnly.breakdown[0].share, 0);
+  assert.equal(Number.isFinite(refundOnly.perDay), true);
+});
+
+test("parseTripInput normalizes input and reports the first problem", () => {
+  assert.deepEqual(
+    parseTripInput({ name: " Prague ", country: "Czechia", currency: "Kč", startDate: "2026-04-10", endDate: "2026-04-15" }),
+    {
+      ok: true,
+      value: {
+        input: { name: "Prague", country: "Czechia", currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15" },
+        status: "confirmed",
+      },
+    }
+  );
+  assert.deepEqual(
+    parseTripInput({ name: "Weekend", country: "", currency: "ILS", startDate: "2026-05-01", endDate: "2026-05-02" }).value.input.country,
+    null
+  );
+  assert.deepEqual(parseTripInput(null), { ok: false, error: "invalidBody" });
+  assert.deepEqual(parseTripInput({ name: " ", currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15" }), { ok: false, error: "nameRequired" });
+  assert.deepEqual(parseTripInput({ name: "x".repeat(81), currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15" }), { ok: false, error: "nameTooLong" });
+  assert.deepEqual(parseTripInput({ name: "Trip", currency: "€uro", startDate: "2026-04-10", endDate: "2026-04-15" }), { ok: false, error: "currencyInvalid" });
+  assert.deepEqual(parseTripInput({ name: "Trip", currency: "CZK", startDate: "2026-02-30", endDate: "2026-04-15" }), { ok: false, error: "dateInvalid" });
+  assert.deepEqual(parseTripInput({ name: "Trip", currency: "CZK", startDate: "2026-04-15", endDate: "2026-04-10" }), { ok: false, error: "dateOrder" });
+  assert.deepEqual(parseTripInput({ name: "Trip", currency: "CZK", startDate: "2026-04-10", endDate: "2026-04-15", status: "bogus" }), { ok: false, error: "statusInvalid" });
+});
+
+test("parseTripPatch validates partial edits against the stored dates", () => {
+  const current = { startDate: "2026-04-10", endDate: "2026-04-15" };
+  assert.deepEqual(parseTripPatch({ endDate: "2026-04-01" }, current), { ok: false, error: "dateOrder" });
+  assert.deepEqual(parseTripPatch({ startDate: "2026-04-20" }, current), { ok: false, error: "dateOrder" });
+  assert.deepEqual(parseTripPatch({ startDate: "2026-04-10T00:00:00.000Z" }, current), { ok: false, error: "dateInvalid" });
+  assert.deepEqual(parseTripPatch({ status: "dismissed" }, current), { ok: true, value: { status: "dismissed" } });
+  assert.deepEqual(parseTripPatch({ currency: "¥", country: " " }, current), { ok: true, value: { currency: "JPY", country: null } });
+  assert.deepEqual(parseTripPatch({}, current), { ok: false, error: "empty" });
+});
+
+test("assignment bodies accept positive integer ids and a trip id or null", () => {
+  assert.deepEqual(parseTransactionIds([3, 1, 3]), [3, 1]);
+  assert.equal(parseTransactionIds([]), null);
+  assert.equal(parseTransactionIds([1, "2"]), null);
+  assert.equal(parseTransactionIds([0]), null);
+  assert.equal(parseTransactionIds(Array.from({ length: 1001 }, (_, i) => i + 1)), null);
+  assert.deepEqual(parseAssignmentBody({ transactionIds: [1, 2], tripId: 7 }), { transactionIds: [1, 2], tripId: 7 });
+  assert.deepEqual(parseAssignmentBody({ transactionIds: [1], tripId: null }), { transactionIds: [1], tripId: null });
+  assert.equal(parseAssignmentBody({ transactionIds: [1] }), null);
+  assert.equal(parseAssignmentBody({ transactionIds: [1], tripId: -2 }), null);
+});
+
+const transfersCat = { id: 9, name: "Transfers", color: "#999999", parentName: "Money Movement", parentColor: "#888888" };
+
+test("summarizeTrip lists Transfers members but leaves them out of every figure", () => {
+  // Same rule as Home: a row categorized Transfers is money movement, not trip spend.
+  const totals = summarizeTrip({ startDate: "2026-07-01", endDate: "2026-07-02" }, [
+    member(1, "2026-07-01", -100, "completed", restaurantsCat),
+    member(2, "2026-07-01", -500, "completed", transfersCat),
+    member(3, "2026-06-01", -300, "completed", transfersCat),
+  ]);
+  assert.equal(totals.total, 100);
+  assert.equal(totals.perDay, 50);
+  assert.equal(totals.before, 0);
+  assert.equal(totals.during, 100);
+  assert.equal(totals.memberCount, 3);
+  assert.equal(totals.pendingCount, 0);
+  assert.deepEqual(totals.breakdown.map((s) => [s.name, s.amount, s.share]), [["Restaurants", 100, 1]]);
+  assert.deepEqual(totals.daily, [
+    { date: "2026-07-01", amount: 100 },
+    { date: "2026-07-02", amount: 0 },
+  ]);
+});

@@ -162,3 +162,154 @@ test("migration 025 handles missing Travel and pre-existing names", () => {
     rmSync(edgeDir, { recursive: true, force: true });
   }
 });
+
+let hashCounter = 0;
+function seedTransactions(db, workspaceId, rows) {
+  const syncRunId = db
+    .prepare(
+      `INSERT INTO sync_runs (workspace_id, provider, started_at, status, scrape_from_date)
+       VALUES (?, 'max_bill', '2026-01-01', 'completed', '2026-01-01')`
+    )
+    .run(workspaceId).lastInsertRowid;
+  const insert = db.prepare(
+    `INSERT INTO transactions
+       (workspace_id, account_number, date, processed_date, original_amount,
+        original_currency, charged_amount, description, type, status,
+        provider, sync_run_id, dedup_hash, kind, category_id, category_source)
+     VALUES (?, 'demo-card', ?, ?, ?, ?, ?, ?, 'normal', ?, 'max_bill', ?, ?, ?, ?, ?)`
+  );
+  return rows.map((row) =>
+    Number(
+      insert.run(
+        workspaceId,
+        row.date,
+        row.date,
+        row.originalAmount ?? row.chargedAmount,
+        row.currency,
+        row.chargedAmount,
+        row.description,
+        row.status ?? "completed",
+        syncRunId,
+        `trips-test-${hashCounter++}`,
+        row.kind ?? "expense",
+        row.categoryId ?? null,
+        row.categorySource ?? (row.categoryId ? "ai" : null)
+      ).lastInsertRowid
+    )
+  );
+}
+
+const tripsQueries = await import("../src/server/db/queries/trips.ts");
+
+test("trip overview counts completed members only and exposes the queue size", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips totals test");
+  const other = createWorkspace("Trips other workspace");
+  const restaurants = getCategoryByName(ws.id, "Restaurants", "expense");
+  const flights = getCategoryByName(ws.id, "Flights", "expense");
+  const trip = tripsQueries.createTrip(ws.id, {
+    name: "Prague",
+    country: "Czechia",
+    currency: "CZK",
+    startDate: "2026-04-10",
+    endDate: "2026-04-15",
+  });
+
+  seedTransactions(db, ws.id, [
+    { date: "2026-04-11", currency: "Kč", chargedAmount: -100, description: "Demo Kavarna", categoryId: restaurants.id },
+    { date: "2026-04-12", currency: "€", chargedAmount: -50, description: "Demo Exchange" },
+    { date: "2026-04-13", currency: "Kč", chargedAmount: -30, description: "Demo Bistro", status: "pending" },
+    { date: "2026-04-14", currency: "Kč", chargedAmount: 20, description: "Demo Refund" },
+    { date: "2026-04-12", currency: "ILS", chargedAmount: -40, description: "Demo Ride App" },
+    { date: "2026-03-01", currency: "$", chargedAmount: -700, description: "Demo Airways", categoryId: flights.id },
+    { date: "2026-04-12", currency: "Kč", chargedAmount: -999, description: "Demo Transfer", kind: "transfer" },
+  ]);
+
+  const overview = tripsQueries.getTripsOverview(ws.id);
+  assert.equal(overview.confirmed.length, 1);
+  assert.equal(overview.confirmed[0].total, 130);
+  assert.equal(overview.confirmed[0].memberCount, 4);
+  assert.equal(overview.confirmed[0].days, 6);
+  assert.equal(overview.needsTripCount, 1);
+
+  const detail = tripsQueries.getTripDetail(ws.id, trip.id);
+  assert.equal(detail.during, 130);
+  assert.equal(detail.before, 0);
+  assert.equal(detail.pendingCount, 1);
+  assert.equal(detail.members.length, 4);
+  assert.equal(detail.members[0].originalCurrency, "CZK");
+
+  assert.equal(tripsQueries.getTripDetail(other.id, trip.id), null);
+  assert.equal(tripsQueries.getTripsOverview(other.id).confirmed.length, 0);
+});
+
+test("suggested trips preview their totals and CRUD stays inside the workspace", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips crud test");
+  const other = createWorkspace("Trips crud other");
+  seedTransactions(db, ws.id, [
+    { date: "2026-06-02", currency: "zł", chargedAmount: -80, description: "Demo Restauracja" },
+    { date: "2026-06-03", currency: "zł", chargedAmount: -40, description: "Demo Targ" },
+  ]);
+  const suggested = tripsQueries.createTrip(
+    ws.id,
+    { name: "Poland Jun 2026", country: "Poland", currency: "PLN", startDate: "2026-06-02", endDate: "2026-06-03" },
+    "suggested"
+  );
+  const overview = tripsQueries.getTripsOverview(ws.id);
+  assert.equal(overview.confirmed.length, 0);
+  assert.equal(overview.suggested[0].total, 120);
+
+  assert.equal(tripsQueries.updateTrip(other.id, suggested.id, { status: "confirmed" }), null);
+  const confirmed = tripsQueries.updateTrip(ws.id, suggested.id, { status: "confirmed", name: "Krakow" });
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(confirmed.name, "Krakow");
+
+  assert.equal(tripsQueries.deleteTrip(other.id, suggested.id), false);
+  assert.equal(tripsQueries.deleteTrip(ws.id, suggested.id), true);
+  assert.equal(tripsQueries.getTrip(ws.id, suggested.id), null);
+});
+
+test("trip totals skip members categorized Transfers but still list them", () => {
+  const db = getDb();
+  const ws = createWorkspace("Trips transfers test");
+  const restaurants = getCategoryByName(ws.id, "Restaurants", "expense");
+  const transfers = getCategoryByName(ws.id, "Transfers", "expense");
+  assert.ok(transfers, "seeded Transfers expense category");
+  const trip = tripsQueries.createTrip(ws.id, {
+    name: "Lisbon",
+    country: "Portugal",
+    currency: "EUR",
+    startDate: "2026-09-10",
+    endDate: "2026-09-12",
+  });
+  const [normalId, transferId] = seedTransactions(db, ws.id, [
+    { date: "2026-09-10", currency: "EUR", chargedAmount: -120, description: "Demo Tasca", categoryId: restaurants.id },
+    { date: "2026-09-11", currency: "EUR", chargedAmount: -800, description: "Demo Wallet Topup", categoryId: transfers.id },
+  ]);
+
+  const detail = tripsQueries.getTripDetail(ws.id, trip.id);
+  assert.equal(detail.total, 120);
+  assert.equal(detail.during, 120);
+  assert.deepEqual(detail.breakdown.map((s) => s.name), ["Restaurants"]);
+  assert.deepEqual(detail.members.map((m) => m.id).sort((a, b) => a - b), [normalId, transferId].sort((a, b) => a - b));
+  assert.equal(tripsQueries.getTripsOverview(ws.id).confirmed[0].total, 120);
+});
+
+test("trip dates round-trip as plain days", () => {
+  const ws = createWorkspace("Trips dates test");
+  const trip = tripsQueries.createTrip(ws.id, {
+    name: "Day trip",
+    country: null,
+    currency: "ILS",
+    startDate: "2026-03-03",
+    endDate: "2026-03-03",
+  });
+  const read = tripsQueries.getTrip(ws.id, trip.id);
+  assert.equal(read.startDate, "2026-03-03");
+  assert.equal(read.endDate, "2026-03-03");
+  const detail = tripsQueries.getTripDetail(ws.id, trip.id);
+  assert.equal(detail.total, 0);
+  assert.equal(detail.perDay, 0);
+  assert.deepEqual(detail.daily, [{ date: "2026-03-03", amount: 0 }]);
+});

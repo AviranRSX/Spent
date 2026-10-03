@@ -44,7 +44,6 @@ interface SectionHandlers {
 
 interface SectionContext {
   data: HomePayload | undefined;
-  isLoading: boolean;
   isError: boolean;
   skeletonLabels: Record<HomeSection, string>;
   handlers: SectionHandlers;
@@ -91,7 +90,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
     }
   }, [monthParam, selectedMonth, router, now]);
 
-  const { data, isLoading, isError, isFetching, isPlaceholderData } = useQuery({
+  const { data, isError, isFetching, isPlaceholderData } = useQuery({
     queryKey: ["home", selectedMonth],
     queryFn: () => getHome(selectedMonth),
     placeholderData: keepPreviousData,
@@ -137,7 +136,6 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
   const refreshing = isFetching && isPlaceholderData;
   const ctx: SectionContext = {
     data,
-    isLoading,
     isError,
     skeletonLabels,
     handlers: { onSelectMonth: handleMonthChange },
@@ -209,11 +207,14 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
 }
 
 function renderSection(section: HomeSection, ctx: SectionContext, spanClass: string) {
-  const { data, isLoading, isError, skeletonLabels } = ctx;
-  if (isLoading || !data) {
+  const { data, isError, skeletonLabels } = ctx;
+  if (!data) {
+    // Without data a failed fetch must say so instead of skeletons forever.
     return (
       <div key={section} className={spanClass}>
-        {section === "kpis" ? (
+        {isError ? (
+          <CardError label={skeletonLabels[section]} />
+        ) : section === "kpis" ? (
           <KpiTilesSkeleton />
         ) : (
           <CardSkeleton
@@ -225,10 +226,9 @@ function renderSection(section: HomeSection, ctx: SectionContext, spanClass: str
     );
   }
 
-  const sectionHasError =
-    isError || data.errors.some((e) => e.section === section);
-
-  if (sectionHasError) {
+  // With data in hand a failed background refetch keeps the last good numbers;
+  // only the payload's own per-section errors replace a card.
+  if (data.errors.some((e) => e.section === section)) {
     return (
       <div key={section} className={spanClass}>
         <CardError label={skeletonLabels[section]} />

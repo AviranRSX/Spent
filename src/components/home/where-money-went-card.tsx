@@ -23,7 +23,7 @@ import type {
 // the ranked list still shows every group.
 const DONUT_MAX_SLICES = 7;
 const UNCATEGORIZED_COLOR = "var(--muted-foreground)";
-const OTHER_COLOR = "var(--input)";
+const OTHER_COLOR = "var(--chart-other)";
 
 function sliceColor(slice: DonutSlice): string {
   if (slice.isOther) return OTHER_COLOR;
@@ -63,8 +63,10 @@ export function WhereMoneyWentCard({ data }: { data: HomeCategoryBreakdown }) {
       label={t("whereMoneyWent")}
       action={<CardAction href={allExpensesHref}>{t("whereAllExpenses")}</CardAction>}
     >
-      <div className="flex flex-1 flex-col gap-5 sm:flex-row sm:items-start">
-        <figure className="relative mx-auto h-40 w-40 shrink-0 sm:mx-0">
+      {/* The card is half width at md, so stack there and go side by side
+          again at lg where the list has room. */}
+      <div className="flex flex-1 flex-col gap-5 sm:flex-row sm:items-start md:flex-col md:items-stretch lg:flex-row lg:items-start">
+        <figure className="relative mx-auto h-40 w-40 shrink-0 sm:mx-0 md:mx-auto lg:mx-0">
           <figcaption className="sr-only">{t("whereMoneyWent")}</figcaption>
           {/* Before the chart so the tooltip paints above it. */}
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -222,7 +224,11 @@ function AverageComparison({
         : "text-[var(--status-on-track)]";
   return (
     <span className={cn("block text-xs tabular-nums", tone)}>
-      {t("whereVsAvg", { value: formatSignedPercent(delta) })}
+      {/* ltr keeps the sign in front of the number in Hebrew. */}
+      {t.rich("whereVsAvg", {
+        value: formatSignedPercent(delta),
+        num: (chunks) => <span dir="ltr">{chunks}</span>,
+      })}
     </span>
   );
 }

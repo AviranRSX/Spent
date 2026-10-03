@@ -52,7 +52,7 @@
     "whereEmpty": "No spending in this month.",
     "whereOther": "Other",
     "whereShare": "{percent}% of expenses",
-    "whereVsAvg": "{value} vs. avg",
+    "whereVsAvg": "<num>{value}</num> vs. avg",
     "whereOfAvgSoFar": "{percent}% of avg so far",
     "whereNew": "No earlier spend",
     "whereTotal": "Spent",

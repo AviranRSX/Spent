@@ -52,7 +52,7 @@
     "whereEmpty": "אין הוצאות בחודש הזה.",
     "whereOther": "אחר",
     "whereShare": "{percent}% מההוצאות",
-    "whereVsAvg": "{value} לעומת הממוצע",
+    "whereVsAvg": "<num>{value}</num> לעומת הממוצע",
     "whereOfAvgSoFar": "{percent}% מהממוצע עד כה",
     "whereNew": "אין הוצאות קודמות",
     "whereTotal": "הוצאות",

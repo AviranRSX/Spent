@@ -41,7 +41,8 @@ import { monthKeyToDate } from "@/lib/home-month";
 import type { TransactionSourceType } from "@/lib/transaction-source-types";
 import type { Locale } from "@/i18n/routing";
 
-const DEFAULT_SOURCE_TYPE: TransactionSourceType = "bank";
+// Matches Home's cash flow scope, so the KPIs here agree with Home's totals.
+const DEFAULT_SOURCE_TYPE: TransactionSourceType = "all";
 
 export function TransactionsPage() {
   const t = useTranslations("transactions");
@@ -51,8 +52,7 @@ export function TransactionsPage() {
   const [initialFilters] = useState(() => parseTransactionsUrlState(searchParams));
   const tTrips = useTranslations("trips");
   const router = useRouter();
-  // A trip's "Add transactions" link sets an explicit date range (its
-  // source=all is already handled by parseTransactionsUrlState above).
+  // A trip's "Add transactions" link sets an explicit date range.
   const [range, setRange] = useState(() => parseTransactionsRange(searchParams));
   const [selectedDate, setSelectedDate] = useState(() =>
     initialFilters.month ? monthKeyToDate(initialFilters.month) : new Date()
@@ -156,7 +156,11 @@ export function TransactionsPage() {
         ? t("reviewLowConfidence")
         : t("pendingReview");
   const sourceChipLabel =
-    sourceType === "card" ? t("sourceCards") : t("sourceAll");
+    sourceType === "card"
+      ? t("sourceCards")
+      : sourceType === "bank"
+        ? t("sourceBanks")
+        : t("sourceAll");
 
   const summaryInitialLoading =
     summaryQuery.isPending && summaryQuery.data === undefined;

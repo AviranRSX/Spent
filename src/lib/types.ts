@@ -149,23 +149,57 @@ export interface Budget {
 }
 
 export type HomeSection =
-  | "thisMonth"
-  | "cashFlow"
-  | "categorySnapshot"
+  | "kpis"
+  | "budgetPace"
+  | "categoryBreakdown"
   | "historicalTrend"
   | "recentTransactions"
   | "spendingStats"
   | "needsAttention"
   | "bankHealth";
 
-export interface HomeThisMonth {
+export interface HomeBudgetPace {
+  /** "YYYY-MM" */
+  month: string;
   spent: number;
   budget: number;
   deltaVsLastMonth: number | null;
-  pacePhrase: string;
-  daysUntilPayday: number;
+  /** Null for past months. */
+  daysUntilPayday: number | null;
   timeElapsedPercent: number;
-  monthLabel: string;
+  isPast: boolean;
+}
+
+export interface HomeCategoryBreakdownChild {
+  categoryId: number;
+  name: string;
+  color: string;
+  amount: number;
+  /** 0..1 share of the month's expenses */
+  share: number;
+}
+
+export interface HomeCategoryBreakdownGroup {
+  /** Parent group id, or the leaf id when it has no parent. Null is the uncategorized bucket. */
+  categoryId: number | null;
+  name: string | null;
+  color: string | null;
+  amount: number;
+  /** 0..1 share of the month's expenses */
+  share: number;
+  /** Mean monthly spend over the average window, or null when there is no window. */
+  avg6: number | null;
+  /** Category ids whose rows make up this group in the month, used for /transactions links. */
+  categoryIds: number[];
+  children: HomeCategoryBreakdownChild[];
+}
+
+export interface HomeCategoryBreakdown {
+  month: string;
+  isCurrentMonth: boolean;
+  total: number;
+  averageMonths: number;
+  groups: HomeCategoryBreakdownGroup[];
 }
 
 export interface HomeCashFlow {
@@ -174,22 +208,34 @@ export interface HomeCashFlow {
   net: number;
 }
 
-export interface HomeCategorySnapshotItem {
-  categoryId: number;
-  name: string;
-  color: string;
-  spent: number;
-  budget: number;
-  percentSpent: number;
-}
-
-export interface HomeHistoricalTrendPoint {
-  month: string;
-  label: string;
+export interface HomeKpiFigures {
   income: number;
   expenses: number;
   net: number;
+  /** net / income, or null when income is 0 */
+  savingsRate: number | null;
+}
+
+export interface HomeKpis extends HomeKpiFigures {
+  /** "YYYY-MM" */
+  month: string;
+  prev: HomeKpiFigures;
+  avg6: (HomeKpiFigures & { months: number }) | null;
+  isCurrentMonth: boolean;
+  dayOfMonth: number;
+  daysInMonth: number;
+}
+
+export interface HomeHistoricalTrendPoint {
+  /** "YYYY-MM"; labels are formatted on the client in the active locale. */
+  month: string;
+  income: number;
+  expenses: number;
+  net: number;
+  /** The calendar month that is still in progress. */
   isCurrent: boolean;
+  /** The month chosen in the month picker. */
+  isSelected: boolean;
 }
 
 export interface HomeCategoryMean {
@@ -257,9 +303,11 @@ export interface HomeSectionError {
 }
 
 export interface HomePayload {
-  thisMonth: HomeThisMonth | null;
-  cashFlow: HomeCashFlow | null;
-  categorySnapshot: HomeCategorySnapshotItem[] | null;
+  /** The month every section was computed for, "YYYY-MM". */
+  month: string;
+  kpis: HomeKpis | null;
+  budgetPace: HomeBudgetPace | null;
+  categoryBreakdown: HomeCategoryBreakdown | null;
   historicalTrend: HomeHistoricalTrendPoint[] | null;
   recentTransactions: HomeRecentTransaction[] | null;
   spendingStats: HomeSpendingStats | null;

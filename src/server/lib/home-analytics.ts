@@ -9,8 +9,8 @@ import type { TransactionSourceType } from "@/lib/transaction-source-types";
 
 interface MonthInfo {
   key: string;
-  label: string;
   isCurrent: boolean;
+  isSelected: boolean;
 }
 
 interface CashFlowRow {
@@ -55,11 +55,11 @@ export function buildMonthlyCashFlowTrend(
     const total = totals.get(month.key) ?? { income: 0, expenses: 0 };
     return {
       month: month.key,
-      label: month.label,
       income: total.income,
       expenses: total.expenses,
       net: total.income - total.expenses,
       isCurrent: month.isCurrent,
+      isSelected: month.isSelected,
     };
   });
 }

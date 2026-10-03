@@ -1,8 +1,10 @@
 import "server-only";
 
 import { getDb } from "../index";
-import { toLocalISODate } from "../../lib/date-utils";
+import { getWorkspaceSetting } from "./settings";
+import { daysUntil, nextPayday } from "../../lib/pace";
 import {
+  buildCashFlowAverages,
   buildMonthlyCashFlowTrend,
   HOME_CASH_FLOW_SOURCE_TYPE,
   HOME_CATEGORY_SOURCE_TYPE,
@@ -11,11 +13,28 @@ import {
   BANK_TRANSACTION_PROVIDERS,
   type TransactionSourceType,
 } from "@/lib/transaction-source-types";
+import {
+  getAverageWindow,
+  HOME_AVERAGE_MONTHS,
+  monthKeyFromDate,
+  previousComparisonRange,
+  trendMonthKeys,
+  type HomeMonthRange,
+} from "@/lib/home-month";
+import { buildHomeKpis } from "@/lib/home-kpis";
+import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
+import {
+  buildCategoryBreakdown,
+  type BreakdownCategory,
+  type BreakdownSpendRow,
+} from "@/lib/home-category-breakdown";
 import type {
   HomeBankHealthItem,
+  HomeBudgetPace,
   HomeCashFlow,
-  HomeCategorySnapshotItem,
+  HomeCategoryBreakdown,
   HomeHistoricalTrendPoint,
+  HomeKpis,
   HomeNeedsAttention,
   HomeRecentTransaction,
   HomeSpendingStats,
@@ -104,58 +123,187 @@ export function getCashFlow(
   };
 }
 
-export function getHistoricalTrend(
+interface MonthlyCashFlowRow {
+  month: string;
+  kind: "income" | "expense";
+  total: number;
+}
+
+function getMonthlyCashFlowRows(
   workspaceId: number,
-  monthsBack: number
+  from: string,
+  to: string
+): MonthlyCashFlowRow[] {
+  return getDb()
+    .prepare(
+      `SELECT strftime('%Y-%m', t.date) as month,
+              t.kind as kind,
+              CASE
+                WHEN t.kind = 'income' THEN SUM(t.charged_amount)
+                ELSE SUM(ABS(t.charged_amount))
+              END as total
+       FROM transactions t
+       WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
+         AND t.status = 'completed'
+         AND t.kind IN ('income', 'expense')
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
+         AND ${EXCLUDE_TRANSFERS_SQL}
+       GROUP BY month, t.kind
+       ORDER BY month ASC`
+    )
+    .all(workspaceId, from, to, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as MonthlyCashFlowRow[];
+}
+
+/** First "YYYY-MM" with completed income or expense rows, or null. */
+export function getFirstActivityMonth(workspaceId: number): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT MIN(strftime('%Y-%m', t.date)) as month
+       FROM transactions t
+       WHERE t.workspace_id = ?
+         AND t.status = 'completed'
+         AND t.kind IN ('income', 'expense')
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
+         AND ${EXCLUDE_TRANSFERS_SQL}`
+    )
+    .get(workspaceId, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as { month: string | null };
+  return row.month;
+}
+
+export function getHomeKpis(workspaceId: number, month: HomeMonthRange): HomeKpis {
+  const current = getCashFlow(workspaceId, month.from, month.to);
+  const prevRange = previousComparisonRange(month);
+  const prev = getCashFlow(workspaceId, prevRange.from, prevRange.to);
+  const window = getAverageWindow(
+    month,
+    getFirstActivityMonth(workspaceId),
+    HOME_AVERAGE_MONTHS
+  );
+  const average = window
+    ? buildCashFlowAverages(
+        getMonthlyCashFlowRows(workspaceId, window.from, window.to),
+        window.months.length
+      )
+    : null;
+
+  return buildHomeKpis(
+    month,
+    current,
+    prev,
+    average && window
+      ? {
+          income: average.meanIncome,
+          expenses: average.meanExpense,
+          months: window.months.length,
+        }
+      : null
+  );
+}
+
+export function getCashFlowTrend(
+  workspaceId: number,
+  month: HomeMonthRange,
+  monthCount: number,
+  now: Date
 ): HomeHistoricalTrendPoint[] {
-  const db = getDb();
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  const months: {
-    key: string;
-    label: string;
-    from: string;
-    to: string;
-    isCurrent: boolean;
-  }[] = [];
-  for (let i = monthsBack - 1; i >= 0; i--) {
-    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-    const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
-    months.push({
+  const keys = trendMonthKeys(month.key, monthCount);
+  const currentKey = monthKeyFromDate(now);
+  const rows = getMonthlyCashFlowRows(workspaceId, `${keys[0]}-01`, month.to);
+  return buildMonthlyCashFlowTrend(
+    keys.map((key) => ({
       key,
-      label: start.toLocaleDateString("en-US", { month: "short" }),
-      from: toLocalISODate(start),
-      to: toLocalISODate(end),
-      isCurrent: key === currentMonthKey,
-    });
-  }
+      isCurrent: key === currentKey,
+      isSelected: key === month.key,
+    })),
+    rows
+  );
+}
 
-  const monthKeys = months.map((month) => month.key);
-  const placeholders = monthKeys.map(() => "?").join(",");
-  const rows = db.prepare(
-    `SELECT strftime('%Y-%m', t.date) as month,
-            t.kind as kind,
-            CASE
-              WHEN t.kind = 'income' THEN SUM(t.charged_amount)
-              ELSE SUM(ABS(t.charged_amount))
-            END as total
+export function getBudgetPace(
+  workspaceId: number,
+  month: HomeMonthRange,
+  now: Date
+): HomeBudgetPace {
+  const spent = getCashFlow(workspaceId, month.from, month.to).expenses;
+  const prevRange = previousComparisonRange(month);
+  const prevSpent = getCashFlow(workspaceId, prevRange.from, prevRange.to).expenses;
+
+  const targetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
+  const parsedTarget = targetRaw != null ? Number(targetRaw) : NaN;
+  const budget = Number.isFinite(parsedTarget) && parsedTarget > 0 ? parsedTarget : 0;
+
+  const isPast = !month.isCurrent;
+  const timeElapsedPercent = isPast
+    ? 100
+    : Math.min(100, (Math.max(1, month.elapsedDays) / month.daysInMonth) * 100);
+
+  const paydayDay = Number(getWorkspaceSetting(workspaceId, "payday_day") ?? "1");
+  const daysUntilPayday = isPast
+    ? null
+    : Math.max(0, daysUntil(nextPayday(now, paydayDay), now));
+
+  return {
+    month: month.key,
+    spent,
+    budget,
+    deltaVsLastMonth: prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null,
+    daysUntilPayday,
+    timeElapsedPercent,
+    isPast,
+  };
+}
+
+export function getCategoryBreakdown(
+  workspaceId: number,
+  month: HomeMonthRange
+): HomeCategoryBreakdown {
+  const db = getDb();
+  const categories = db
+    .prepare(
+      `SELECT id, parent_id as parentId, name, color
+       FROM categories WHERE workspace_id = ?`
+    )
+    .all(workspaceId) as BreakdownCategory[];
+
+  // Same filters as the Expenses KPI, so the groups add up to it.
+  const spendStmt = db.prepare(
+    `SELECT t.category_id as categoryId, SUM(ABS(t.charged_amount)) as amount
      FROM transactions t
-     WHERE t.workspace_id = ?
-       AND t.status = 'completed'
-       AND t.kind IN ('income', 'expense')
-       AND strftime('%Y-%m', t.date) IN (${placeholders})
-       AND ${HOME_CASH_FLOW_SOURCE_SQL}
+     WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
+       AND t.status = 'completed' AND t.kind = 'expense'
+       AND ${HOME_CATEGORY_SOURCE_SQL}
        AND ${EXCLUDE_TRANSFERS_SQL}
-     GROUP BY month, t.kind`
-  ).all(workspaceId, ...monthKeys, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as Array<{
-    month: string;
-    kind: "income" | "expense";
-    total: number;
-  }>;
+     GROUP BY t.category_id`
+  );
+  const monthRows = spendStmt.all(
+    workspaceId,
+    month.from,
+    month.to,
+    ...HOME_CATEGORY_SOURCE_PROVIDERS
+  ) as BreakdownSpendRow[];
 
-  return buildMonthlyCashFlowTrend(months, rows);
+  const window = getAverageWindow(
+    month,
+    getFirstActivityMonth(workspaceId),
+    HOME_AVERAGE_MONTHS
+  );
+  const averageRows = window
+    ? (spendStmt.all(
+        workspaceId,
+        window.from,
+        window.to,
+        ...HOME_CATEGORY_SOURCE_PROVIDERS
+      ) as BreakdownSpendRow[])
+    : [];
+
+  return buildCategoryBreakdown({
+    month: month.key,
+    isCurrentMonth: month.isCurrent,
+    categories,
+    monthRows,
+    averageRows,
+    averageMonths: window?.months.length ?? 0,
+  });
 }
 
 export function getSpendingStats(
@@ -218,33 +366,7 @@ export function getSpendingStats(
     color: string;
     amount: number;
   }>;
-  const cashFlowRows = db.prepare(
-    `SELECT strftime('%Y-%m', t.date) as month,
-            t.kind as kind,
-            CASE
-              WHEN t.kind = 'income' THEN SUM(t.charged_amount)
-              ELSE SUM(ABS(t.charged_amount))
-            END as total
-     FROM transactions t
-     WHERE t.workspace_id = ?
-       AND t.date >= ?
-       AND t.date <= ?
-       AND t.status = 'completed'
-       AND t.kind IN ('income', 'expense')
-       AND ${HOME_CASH_FLOW_SOURCE_SQL}
-       AND ${EXCLUDE_TRANSFERS_SQL}
-     GROUP BY month, t.kind
-     ORDER BY month ASC`
-  ).all(
-    workspaceId,
-    trendFrom,
-    to,
-    ...HOME_CASH_FLOW_SOURCE_PROVIDERS
-  ) as Array<{
-    month: string;
-    kind: "income" | "expense";
-    total: number;
-  }>;
+  const cashFlowRows = getMonthlyCashFlowRows(workspaceId, trendFrom, to);
   const monthKeys = oldest.month != null ? getMonthRange(startMonth, toMonth) : [];
   const monthlyCashFlow = monthKeys.map((month) => {
     const income = cashFlowRows
@@ -266,7 +388,8 @@ export function getSpendingStats(
 
 export function getRecentTransactionsForHome(
   workspaceId: number,
-  limit: number
+  limit: number,
+  to: string
 ): HomeRecentTransaction[] {
   const rows = getDb()
     .prepare(
@@ -276,11 +399,12 @@ export function getRecentTransactionsForHome(
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        WHERE t.workspace_id = ? AND t.status = 'completed' AND t.kind != 'transfer'
+         AND t.date <= ?
          AND ${EXCLUDE_TRANSFERS_SQL}
        ORDER BY t.date DESC, t.id DESC
        LIMIT ?`
     )
-    .all(workspaceId, limit) as Array<{
+    .all(workspaceId, to, limit) as Array<{
     id: number;
     date: string;
     description: string;
@@ -294,32 +418,31 @@ export function getRecentTransactionsForHome(
 }
 
 export function getNeedsAttentionCounts(
-  workspaceId: number
+  workspaceId: number,
+  range?: { from: string; to: string }
 ): HomeNeedsAttention {
   const db = getDb();
-  const uncategorized = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND category_id IS NULL AND kind = 'expense' AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
-  const lowConfidence = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND ai_confidence IS NOT NULL AND ai_confidence < 0.5
-         AND category_source = 'ai' AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
-  const flagged = db
-    .prepare(
-      `SELECT COUNT(*) as count FROM transactions
-       WHERE workspace_id = ? AND needs_review = 1 AND status = 'completed'`
-    )
-    .get(workspaceId) as { count: number };
+  const rangeSql = range ? " AND date >= ? AND date <= ?" : "";
+  const rangeValues = range ? [range.from, range.to] : [];
+  const count = (condition: string, ...values: (string | number)[]): number =>
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) as count FROM transactions
+           WHERE workspace_id = ? AND status = 'completed' AND ${condition}${rangeSql}`
+        )
+        .get(workspaceId, ...values, ...rangeValues) as { count: number }
+    ).count;
+
   return {
-    uncategorized: uncategorized.count,
-    lowConfidence: lowConfidence.count,
-    flagged: flagged.count,
+    uncategorized: count("category_id IS NULL AND kind = 'expense'"),
+    // Approving a row clears needs_review but keeps ai_confidence, so
+    // approved rows must not stay in this count.
+    lowConfidence: count(
+      "category_source = 'ai' AND ai_confidence IS NOT NULL AND ai_confidence <= ? AND needs_review = 1",
+      LOW_CONFIDENCE_MAX
+    ),
+    flagged: count("needs_review = 1"),
   };
 }
 
@@ -387,105 +510,4 @@ export function getBankHealth(workspaceId: number): HomeBankHealthItem[] {
       errorMessage: null,
     };
   });
-}
-
-export function getCategorySnapshot(
-  workspaceId: number,
-  from: string,
-  to: string,
-  limit: number
-): HomeCategorySnapshotItem[] {
-  const db = getDb();
-
-  const categories = db
-    .prepare(
-      `SELECT id, parent_id as parentId, name, color
-       FROM categories WHERE workspace_id = ? AND kind = 'expense'`
-    )
-    .all(workspaceId) as Array<{
-    id: number;
-    parentId: number | null;
-    name: string;
-    color: string;
-  }>;
-
-  const parentIds = new Set<number>();
-  for (const c of categories) {
-    if (c.parentId != null) parentIds.add(c.parentId);
-  }
-
-  const spendRows = db
-    .prepare(
-      `SELECT category_id as categoryId, SUM(ABS(charged_amount)) as amount
-       FROM transactions t
-       WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
-         AND t.status = 'completed' AND t.kind = 'expense'
-         AND t.category_id IS NOT NULL
-         AND ${HOME_CATEGORY_SOURCE_SQL}
-         AND ${EXCLUDE_TRANSFERS_SQL}
-       GROUP BY category_id`
-    )
-    .all(workspaceId, from, to, ...HOME_CATEGORY_SOURCE_PROVIDERS) as Array<{
-    categoryId: number;
-    amount: number;
-  }>;
-
-  const budgetRows = db
-    .prepare(
-      `SELECT category_id as categoryId, monthly_amount as monthlyAmount
-       FROM budgets WHERE workspace_id = ?`
-    )
-    .all(workspaceId) as Array<{ categoryId: number; monthlyAmount: number }>;
-
-  const budgetByCategory = new Map<number, number>();
-  for (const b of budgetRows) budgetByCategory.set(b.categoryId, b.monthlyAmount);
-
-  // Roll each leaf's spend up to its parent if it has one, else under its own id.
-  const rolledSpend = new Map<number, number>();
-  const rolledBudget = new Map<number, number>();
-
-  const categoryById = new Map(categories.map((c) => [c.id, c]));
-
-  for (const row of spendRows) {
-    const cat = categoryById.get(row.categoryId);
-    if (!cat) continue;
-    const key = cat.parentId ?? cat.id;
-    rolledSpend.set(key, (rolledSpend.get(key) ?? 0) + row.amount);
-  }
-
-  // Roll up budgets the same way. Parent's explicit budget takes precedence
-  // over the sum of children when it exists.
-  for (const cat of categories) {
-    const explicit = budgetByCategory.get(cat.id);
-    if (explicit == null) continue;
-    const key = cat.parentId ?? cat.id;
-    if (cat.parentId == null && parentIds.has(cat.id)) {
-      // This is a parent with its own explicit budget — use it directly.
-      rolledBudget.set(key, explicit);
-    } else {
-      // Leaf budget: only add if parent doesn't have its own explicit budget.
-      const parentHasOwnBudget =
-        cat.parentId != null && budgetByCategory.has(cat.parentId);
-      if (parentHasOwnBudget) continue;
-      rolledBudget.set(key, (rolledBudget.get(key) ?? 0) + explicit);
-    }
-  }
-
-  const items: HomeCategorySnapshotItem[] = [];
-  for (const [key, spent] of rolledSpend) {
-    const cat = categoryById.get(key);
-    if (!cat) continue;
-    const budget = rolledBudget.get(key) ?? 0;
-    items.push({
-      categoryId: key,
-      name: cat.name,
-      color: cat.color,
-      spent,
-      budget,
-      percentSpent: budget > 0 ? (spent / budget) * 100 : 0,
-    });
-  }
-
-  items.sort((a, b) => b.spent - a.spent);
-  return items.slice(0, limit);
 }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getDb } from "../index";
+import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
 import { computeDedupHash } from "../../lib/dedup";
 import { combineTransactionPageSummaryTotals } from "../../lib/transaction-summary";
 import { detectKind } from "../../lib/transfers";
@@ -168,6 +169,10 @@ interface QueryParams {
   provider?: string;
   sourceType?: TransactionSourceType;
   needsReview?: boolean;
+  /** Rows with no category yet. */
+  uncategorized?: boolean;
+  /** AI-categorized rows at or below LOW_CONFIDENCE_MAX that still need review. */
+  lowConfidence?: boolean;
   accountNumbers?: string[];
   /** @deprecated Use credentialIds */
   credentialId?: number;
@@ -306,6 +311,15 @@ export function queryTransactions(
   }
   if (params.needsReview) {
     conditions.push("t.needs_review = 1");
+  }
+  if (params.uncategorized) {
+    conditions.push("t.category_id IS NULL");
+  }
+  if (params.lowConfidence) {
+    conditions.push(
+      "t.category_source = 'ai' AND t.ai_confidence IS NOT NULL AND t.ai_confidence <= ? AND t.needs_review = 1"
+    );
+    values.push(LOW_CONFIDENCE_MAX);
   }
   const credentialIds =
     params.credentialIds && params.credentialIds.length > 0

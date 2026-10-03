@@ -23,6 +23,7 @@ import {
   type DescriptionCategoryHistory,
 } from "@/server/sync/description-history";
 import type { CategoryMapping, MatchingDescriptionHistory } from "@/server/ai/types";
+import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
 
 export type CategorizationEventSender = (
   event: string,
@@ -351,7 +352,7 @@ export async function categorizeWorkspaceTransactions(
           });
           reviewFlags.push({
             id: txn.id,
-            needsReview: confidence == null || confidence <= 4,
+            needsReview: confidence == null || confidence <= LOW_CONFIDENCE_MAX,
           });
         }
 

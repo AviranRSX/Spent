@@ -251,6 +251,8 @@ export function getTransactions(params: {
   provider?: string;
   sourceType?: TransactionSourceType;
   needsReview?: boolean;
+  uncategorized?: boolean;
+  lowConfidence?: boolean;
   credentialIds?: number[];
   accountNumbers?: string[];
 }) {
@@ -320,8 +322,9 @@ export function getSummary(params: {
   return fetchJSON<DashboardSummary>(`/api/summary?${searchParams}`);
 }
 
-export function getHome() {
-  return fetchJSON<HomePayload>(`/api/home`);
+export function getHome(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJSON<HomePayload>(`/api/home${qs}`);
 }
 
 export function getActivity() {

@@ -38,7 +38,7 @@ export function SpendingStatsCard({ data }: Props) {
 
   if (!hasStats) {
     return (
-      <CardShell label={t("spendingStatsTitle")} className="min-h-[560px]">
+      <CardShell label={t("spendingStatsTitle")}>
         <div className="flex flex-1 flex-col justify-center gap-4">
           <MonthSelector
             value={selectedMonthCount}
@@ -54,7 +54,7 @@ export function SpendingStatsCard({ data }: Props) {
   }
 
   return (
-    <CardShell label={t("spendingStatsTitle")} className="min-h-[560px]">
+    <CardShell label={t("spendingStatsTitle")}>
       <div className="flex flex-1 flex-col gap-4">
         <MonthSelector
           value={selectedMonthCount}
@@ -62,7 +62,9 @@ export function SpendingStatsCard({ data }: Props) {
           onChange={setMonthCount}
         />
 
-        <div className="grid grid-cols-3 gap-2">
+        {/* One row per stat where the card is narrow (phone, and half width
+            at md); three tiles side by side where it has room. */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
           <MiniStat
             label={t("meanIncome")}
             value={formatCurrency(stats.cashFlowAverages.meanIncome)}
@@ -181,12 +183,15 @@ function MiniStat({
   color: string;
 }) {
   return (
-    <div className="min-w-0 rounded-lg bg-background/40 p-2.5">
-      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-        <span style={{ color }}>{icon}</span>
-        <span className="truncate">{label}</span>
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-background/40 p-2.5 sm:block md:flex lg:block">
+      <div className="flex min-w-0 items-start gap-1 text-[10px] font-semibold uppercase leading-tight tracking-[0.04em] text-muted-foreground">
+        <span className="mt-px shrink-0" style={{ color }}>{icon}</span>
+        <span className="min-w-0 break-words">{label}</span>
       </div>
-      <div className="mt-1 truncate text-sm font-medium tabular-nums" style={{ color }}>
+      <div
+        className="shrink-0 truncate text-sm font-medium tabular-nums sm:mt-1 md:mt-0 lg:mt-1"
+        style={{ color }}
+      >
         {value}
       </div>
     </div>

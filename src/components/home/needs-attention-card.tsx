@@ -2,18 +2,30 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, CircleHelp, Flag } from "lucide-react";
+import { AlertTriangle, CircleHelp, Flag, type LucideIcon } from "lucide-react";
 import { CardShell } from "./card-shell";
+import {
+  buildNeedsAttentionRows,
+  type NeedsAttentionRowId,
+} from "@/lib/home-needs-attention";
 import type { HomeNeedsAttention } from "@/lib/types";
+
+const ROW_META: Record<NeedsAttentionRowId, { icon: LucideIcon; labelKey: string }> = {
+  uncategorized: { icon: CircleHelp, labelKey: "needsAttentionUncategorized" },
+  lowConfidence: { icon: AlertTriangle, labelKey: "needsAttentionLowConfidence" },
+  flagged: { icon: Flag, labelKey: "needsAttentionFlagged" },
+};
 
 interface Props {
   data: HomeNeedsAttention;
+  /** "YYYY-MM"; row links open /transactions for this month. */
+  month: string;
 }
 
-export function NeedsAttentionCard({ data }: Props) {
+export function NeedsAttentionCard({ data, month }: Props) {
   const t = useTranslations("home");
-  const { uncategorized, lowConfidence, flagged } = data;
-  const total = uncategorized + lowConfidence + flagged;
+  const rows = buildNeedsAttentionRows(data, month);
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
 
   if (total === 0) {
     return (
@@ -29,24 +41,18 @@ export function NeedsAttentionCard({ data }: Props) {
   return (
     <CardShell label={t("needsAttention")}>
       <ul className="flex flex-1 flex-col gap-2">
-        <Row
-          icon={<CircleHelp className="h-4 w-4" />}
-          label={t("needsAttentionUncategorized")}
-          count={uncategorized}
-          href="/transactions"
-        />
-        <Row
-          icon={<AlertTriangle className="h-4 w-4" />}
-          label={t("needsAttentionLowConfidence")}
-          count={lowConfidence}
-          href="/transactions"
-        />
-        <Row
-          icon={<Flag className="h-4 w-4" />}
-          label={t("needsAttentionFlagged")}
-          count={flagged}
-          href="/transactions"
-        />
+        {rows.map((row) => {
+          const meta = ROW_META[row.id];
+          return (
+            <Row
+              key={row.id}
+              icon={<meta.icon className="h-4 w-4" />}
+              label={t(meta.labelKey)}
+              count={row.count}
+              href={row.href}
+            />
+          );
+        })}
       </ul>
     </CardShell>
   );

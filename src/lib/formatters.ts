@@ -71,6 +71,50 @@ export function addMonths(date: Date, months: number): Date {
   return result;
 }
 
+/** Formats a "YYYY-MM" key in the active locale, e.g. "Oct 2026". */
+export function formatMonthKey(
+  monthKey: string,
+  locale?: Locale,
+  style: "short" | "long" = "long",
+  withYear = true,
+): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(
+    bcp47(locale),
+    withYear ? { month: style, year: "numeric" } : { month: style },
+  );
+}
+
+export function formatWholeCurrency(amount: number, locale?: Locale): string {
+  return `₪${Math.round(Math.abs(amount)).toLocaleString(bcp47(locale))}`;
+}
+
+/** Axis ticks: "₪12.5K", "−₪3K". */
+export function formatCompactCurrency(amount: number, locale?: Locale): string {
+  const sign = amount < 0 ? "−" : "";
+  const compact = new Intl.NumberFormat(bcp47(locale), {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(Math.abs(amount));
+  return `${sign}₪${compact}`;
+}
+
+/** Rounded, with "+" or a true minus sign; zero has no sign. */
+export function formatSignedNumber(value: number): string {
+  const rounded = Math.round(value);
+  if (rounded === 0) return "0";
+  return `${rounded > 0 ? "+" : "−"}${Math.abs(rounded)}`;
+}
+
+export function formatSignedPercent(value: number): string {
+  return `${formatSignedNumber(value)}%`;
+}
+
+export function formatSignedCurrency(amount: number, locale?: Locale): string {
+  if (Math.round(amount) === 0) return formatWholeCurrency(0, locale);
+  return `${amount > 0 ? "+" : "−"}${formatWholeCurrency(amount, locale)}`;
+}
+
 export interface FormatLastSyncLabels {
   never: string;
   justNow: string;

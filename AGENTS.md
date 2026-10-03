@@ -165,7 +165,7 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 
 ### Pages
 
-- `/`: Home. Cash flow, this month, historical trend, spending stats (selectable month range), category snapshot, needs attention, recent transactions.
+- `/`: Home, scoped to `?month=YYYY-MM` (defaults to the current month). KPI tiles (income, expenses, net, savings rate with deltas and 6-month averages), 12-month cash-flow chart, where money went, budget pace, averages (selectable month range), needs attention, recent transactions.
 - `/budget`: monthly budgets per category with pace tracking.
 - `/transactions`: full table with filters, sorting, KPIs, and inline recategorization.
 - `/credit-card`: card-only spending view.

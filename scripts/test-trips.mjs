@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { registerHooks } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -538,4 +539,26 @@ test("the category prompt opens only for travel categories still waiting for a t
   assert.equal(tripPromptSuggestions("Travel", { kind: "member", tripId: 2, tripName: "Japan", reason: "during" }), null);
   assert.equal(tripPromptSuggestions("Travel", { kind: "none", manualNoTrip: true }), null);
   assert.equal(tripPromptSuggestions("Travel", undefined), null);
+});
+
+function flattenKeys(obj, prefix = "") {
+  return Object.entries(obj).flatMap(([key, value]) =>
+    value && typeof value === "object"
+      ? flattenKeys(value, `${prefix}${key}.`)
+      : [`${prefix}${key}`]
+  );
+}
+
+test("trip strings exist in English and Hebrew with the same keys and no em dashes", () => {
+  const en = JSON.parse(readFileSync("src/i18n/messages/en.json", "utf8"));
+  const he = JSON.parse(readFileSync("src/i18n/messages/he.json", "utf8"));
+  assert.deepEqual(flattenKeys(he.trips).sort(), flattenKeys(en.trips).sort());
+  for (const key of ["Trips & Travel", "Flights", "Travel Insurance"]) {
+    assert.ok(en.categoriesSeeded[key], `en categoriesSeeded.${key}`);
+    assert.ok(he.categoriesSeeded[key], `he categoriesSeeded.${key}`);
+  }
+  assert.ok(en.nav.trips && he.nav.trips);
+  assert.ok(en.home.needsAttentionNeedsTrip && he.home.needsAttentionNeedsTrip);
+  const text = JSON.stringify([en.trips, he.trips]);
+  assert.equal(text.includes("\u2014"), false);
 });

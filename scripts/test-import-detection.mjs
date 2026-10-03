@@ -7,7 +7,7 @@ import { PROVIDER_FIXTURES, buildOpenXmlWorkbook } from "./import-workbook-test-
 const { detectWorkbookBuffer, getOpenXmlArchiveLimitIssue } = parser;
 
 for (const [templateType, kind, buildFixture] of PROVIDER_FIXTURES) {
-  test(`detects a ${templateType} export from workbook content`, async () => {
+  test(`detects a ${templateType} export from workbook content (${buildFixture.name})`, async () => {
     const buffer = await buildFixture();
     assert.deepEqual(await detectWorkbookBuffer(buffer), {
       ok: true,
@@ -96,5 +96,5 @@ test("rejects a workbook matching more than one provider", async () => {
   const result = await detectWorkbookBuffer(buffer);
   assert.equal(result.ok, false);
   assert.equal(result.code, "ambiguous");
-  assert.deepEqual(result.matches.sort(), ["isracard_bill", "max_bill"]);
+  assert.deepEqual(result.matches.sort(), ["cal_bill", "isracard_bill", "max_bill"]);
 });

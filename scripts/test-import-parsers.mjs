@@ -6,14 +6,17 @@ import {
   FIXTURE_ACCOUNTS,
   ISRACARD_REPEATED_HEADER_ROW,
   PROVIDER_FIXTURES,
+  CAL_STATEMENT_ROWS,
+  buildCalStatementWorkbook,
   buildCalWorkbook,
   buildIsracardWorkbook,
   buildMaxWorkbook,
   buildOpenXmlWorkbook,
+  excelSerial,
 } from "./import-workbook-test-helpers.mjs";
 
 for (const [templateType, , buildFixture] of PROVIDER_FIXTURES) {
-  test(`parses a ${templateType} export`, async () => {
+  test(`parses a ${templateType} export (${buildFixture.name})`, async () => {
     const result = await parseWorkbookBuffer(await buildFixture(), {
       templateType,
       sourceLabel: templateType,
@@ -310,4 +313,107 @@ test("ignores blank total and explanatory rows", async () => {
     sourceLabel: "Isracard",
   });
   assert.deepEqual(result.rowIssues, []);
+});
+
+test("parses the CAL statement export with billing date from the preamble", async () => {
+  const result = await parseWorkbookBuffer(await buildCalStatementWorkbook({ billingDate: "2026-08-10" }), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+    today: "2026-09-01",
+  });
+
+  assert.deepEqual(result.rowIssues, []);
+  assert.deepEqual(
+    result.transactions.map((t) => ({
+      accountNumber: t.accountNumber,
+      date: t.date,
+      processedDate: t.processedDate,
+      description: t.description,
+      originalAmount: t.originalAmount,
+      originalCurrency: t.originalCurrency,
+      chargedAmount: t.chargedAmount,
+      chargedCurrency: t.chargedCurrency,
+      status: t.status,
+      type: t.type,
+    })),
+    CAL_STATEMENT_ROWS.map((row) => ({
+      accountNumber: "4321",
+      date: row.date,
+      processedDate: "2026-08-10",
+      description: row.merchant,
+      originalAmount: -row.amount,
+      originalCurrency: "ILS",
+      chargedAmount: -row.amount,
+      chargedCurrency: "ILS",
+      status: "completed",
+      type: "normal",
+    }))
+  );
+  assert.equal(result.transactions[0].memo, "רגילה · מזון ומשקאות");
+});
+
+test("marks CAL statement rows pending when the billing date is in the future", async () => {
+  const result = await parseWorkbookBuffer(await buildCalStatementWorkbook({ billingDate: "2026-10-10" }), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+    today: "2026-10-03",
+  });
+  assert.deepEqual(
+    [...new Set(result.transactions.map((t) => t.status))],
+    ["pending"]
+  );
+  assert.equal(result.transactions[0].processedDate, "2026-10-10");
+});
+
+test("CAL statement row totals equal the billing line total", async () => {
+  const result = await parseWorkbookBuffer(await buildCalStatementWorkbook(), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+  });
+  const parsedTotal = result.transactions.reduce((sum, t) => sum - t.chargedAmount, 0);
+  const expected = CAL_STATEMENT_ROWS.reduce((sum, row) => sum + row.amount, 0);
+  assert.equal(parsedTotal.toFixed(2), expected.toFixed(2));
+});
+
+test("CAL statement and legacy exports produce identical dedup inputs for the same purchase", async () => {
+  const pick = (t) => ({
+    accountNumber: t.accountNumber,
+    date: t.date,
+    originalAmount: t.originalAmount,
+    originalCurrency: t.originalCurrency,
+    description: t.description,
+    identifier: t.identifier,
+  });
+  const legacy = await parseWorkbookBuffer(await buildCalWorkbook(), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+  });
+  const statement = await parseWorkbookBuffer(await buildCalStatementWorkbook(), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+  });
+  // "מתנה לדוגמה" on 2026-07-31 for 150.25 exists in both fixtures.
+  const legacyRow = legacy.transactions.find((t) => t.date === "2026-07-31");
+  const statementRow = statement.transactions.find((t) => t.date === "2026-07-31");
+  assert.deepEqual(pick(statementRow), pick(legacyRow));
+});
+
+test("parses a foreign currency amount cell in the CAL statement export", async () => {
+  const buffer = await buildOpenXmlWorkbook([
+    ["פירוט עסקאות לכרטיס מאסטרקארד המסתיים ב-4321"],
+    [],
+    ["עסקאות לחיוב ב-10/08/2026: 95.00 ₪"],
+    ["תאריך\r\nעסקה", "שם בית עסק", "סכום\r\nעסקה", "סכום\r\nחיוב", "סוג\r\nעסקה", "ענף", "הערות"],
+    [excelSerial("2026-07-15"), "EXAMPLE CAFE", "€ 24.50", 95, "רגילה", "", ""],
+  ]);
+  const result = await parseWorkbookBuffer(buffer, {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+    today: "2026-09-01",
+  });
+  assert.deepEqual(result.rowIssues, []);
+  assert.equal(result.transactions[0].originalAmount, -24.5);
+  assert.equal(result.transactions[0].originalCurrency, "EUR");
+  assert.equal(result.transactions[0].chargedAmount, -95);
+  assert.equal(result.transactions[0].chargedCurrency, "ILS");
 });

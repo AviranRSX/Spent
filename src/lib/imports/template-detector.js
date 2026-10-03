@@ -18,6 +18,13 @@ const IMPORT_SIGNATURES = [
     headers: ["תאריך עסקה", "שם בית עסק", "סכום בש\"ח", "מועד חיוב"],
   },
   {
+    // CAL "current statement" export. Same template, different headers.
+    templateType: "cal_bill",
+    kind: "card",
+    container: "open_xml",
+    headers: ["תאריך עסקה", "שם בית עסק", "סכום עסקה", "סכום חיוב", "סוג עסקה"],
+  },
+  {
     templateType: "hapoalim_bank_account",
     kind: "bank",
     container: "open_xml",

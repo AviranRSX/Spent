@@ -120,6 +120,43 @@ export function buildCalWorkbook() {
   ]);
 }
 
+// CAL "current statement" export: no per-row billing date, the billing date
+// and total live in row 3, and headers contain embedded line breaks.
+export const CAL_STATEMENT_ROWS = [
+  { date: "2026-07-12", merchant: "סופר לדוגמה", amount: 210.4, type: "רגילה", branch: "מזון ומשקאות" },
+  { date: "2026-07-20", merchant: "ספק אינטרנט לדוגמה", amount: 99.9, type: "הוראת קבע", branch: "" },
+  { date: "2026-07-31", merchant: "מתנה לדוגמה", amount: 150.25, type: "רגילה", branch: "מתנות" },
+];
+
+function formatIsraeliDate(isoDate) {
+  const [year, month, day] = isoDate.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+export function buildCalStatementWorkbook({ billingDate = "2026-08-10" } = {}) {
+  const total = CAL_STATEMENT_ROWS.reduce((sum, row) => sum + row.amount, 0);
+  return buildOpenXmlWorkbook(
+    [
+      [`פירוט עסקאות לחשבון בנק לדוגמה 999-11111 לכרטיס מאסטרקארד זהב המסתיים ב-${FIXTURE_ACCOUNTS.cal_bill}`],
+      [],
+      [`עסקאות לחיוב ב-${formatIsraeliDate(billingDate)}: ${total.toFixed(2)} ₪`],
+      ["תאריך\r\nעסקה", "שם בית עסק", "סכום\r\nעסקה", "סכום\r\nחיוב", "סוג\r\nעסקה", "ענף", "הערות"],
+      ...CAL_STATEMENT_ROWS.map((row) => [
+        excelSerial(row.date),
+        row.merchant,
+        row.amount,
+        row.amount,
+        row.type,
+        row.branch,
+        "",
+      ]),
+      [],
+      ["את המידע המלא על כל עסקה אפשר למצוא באתר ובאפליקציה של חברת הכרטיס."],
+    ],
+    { sheetName: "בנק לדוגמה 999-11111" }
+  );
+}
+
 export function buildHapoalimWorkbook() {
   return buildOpenXmlWorkbook([
     [],
@@ -149,6 +186,7 @@ export const PROVIDER_FIXTURES = [
   ["isracard_bill", "card", buildIsracardWorkbook],
   ["max_bill", "card", buildMaxWorkbook],
   ["cal_bill", "card", buildCalWorkbook],
+  ["cal_bill", "card", buildCalStatementWorkbook],
   ["hapoalim_bank_account", "bank", buildHapoalimWorkbook],
   ["leumi_bank_account", "bank", buildLeumiHtml],
 ];

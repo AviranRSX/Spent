@@ -1,5 +1,40 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { registerHooks } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
+
+const srcRoot = path.join(process.cwd(), "src");
+
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier.startsWith("@/")) {
+      const target = path.join(srcRoot, specifier.slice(2));
+      const withExt = path.extname(target) === "" ? `${target}.ts` : target;
+      return nextResolve(pathToFileURL(withExt).href, context);
+    }
+    if (
+      specifier.startsWith(".") &&
+      path.extname(specifier) === "" &&
+      context.parentURL?.includes("/src/")
+    ) {
+      return nextResolve(`${specifier}.ts`, context);
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
+const tmpRoot = path.join(process.cwd(), ".tmp-tests");
+mkdirSync(tmpRoot, { recursive: true });
+const dataDir = mkdtempSync(path.join(tmpRoot, "spent-home-cash-flow-"));
+process.env.SPENT_DATA_DIR = dataDir;
+
+test.after(() => {
+  globalThis._db?.close();
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
 import {
   buildCashFlowAverages,
   buildCategoryMonthlyMeans,
@@ -9,9 +44,42 @@ import {
   HOME_CATEGORY_SOURCE_TYPE,
 } from "../src/server/lib/home-analytics.ts";
 
-test("home cash-flow means use transactions scope while category means use all sources", () => {
-  assert.equal(HOME_CASH_FLOW_SOURCE_TYPE, "bank");
+test("home cash flow and category means both use all sources", () => {
+  assert.equal(HOME_CASH_FLOW_SOURCE_TYPE, "all");
   assert.equal(HOME_CATEGORY_SOURCE_TYPE, "all");
+});
+
+test("home cash flow counts card purchases as expenses and skips the bank card-bill transfer", async () => {
+  const { getDb } = await import("../src/server/db/index.ts");
+  const { getCashFlow } = await import("../src/server/db/queries/home.ts");
+  const db = getDb();
+  const syncRunId = db
+    .prepare(
+      `INSERT INTO sync_runs (workspace_id, provider, started_at, status, scrape_from_date)
+       VALUES (1, 'test', '2026-07-01', 'completed', '2026-07-01')`
+    )
+    .run().lastInsertRowid;
+  const insert = db.prepare(
+    `INSERT INTO transactions
+       (workspace_id, account_number, date, processed_date, original_amount,
+        original_currency, charged_amount, description, type, status,
+        provider, sync_run_id, dedup_hash, kind)
+     VALUES (1, 'acct', ?, ?, ?, 'ILS', ?, ?, 'normal', 'completed', ?, ?, ?, ?)`
+  );
+  const rows = [
+    ["2026-07-10", 10000, "Salary", "hapoalim_bank_account", "income"],
+    ["2026-07-11", -3000, "Rent", "hapoalim_bank_account", "expense"],
+    ["2026-07-12", -2000, "ISRACARD", "hapoalim_bank_account", "transfer"],
+    ["2026-07-05", -1200, "Supermarket", "isracard_bill", "expense"],
+    ["2026-07-06", -800, "Restaurant", "isracard_bill", "expense"],
+  ];
+  rows.forEach(([date, amount, description, provider, kind], index) => {
+    insert.run(date, date, amount, amount, description, provider, syncRunId, `h${index}`, kind);
+  });
+
+  const cashFlow = getCashFlow(1, "2026-07-01", "2026-07-31");
+
+  assert.deepEqual(cashFlow, { income: 10000, expenses: 5000, net: 5000 });
 });
 
 test("home spending stats end at the previous complete month", () => {

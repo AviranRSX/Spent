@@ -44,7 +44,7 @@ These rules decide whether the analysis is right. Read them before touching impo
 - Every transaction has a `kind`: `expense`, `income`, or `transfer` (`src/server/lib/transfers.ts` `detectKind`).
 - **Credit card bill payments in a bank account are `transfer`, not `expense`.** The individual card purchases are already imported from the card file. Counting the bank debit too would double count. Detection uses Hebrew and English card-company patterns (`CREDIT_CARD_PAYMENT_PATTERNS`).
 - Positive amounts in a bank account are `income`. Card rows are `expense`.
-- Home cash flow (income vs. expenses) currently uses bank sources only, while category breakdowns use all sources (bank plus cards). See `HOME_CASH_FLOW_SOURCE_TYPE` and `HOME_CATEGORY_SOURCE_TYPE` in `src/server/lib/home-analytics.ts`, and the known issue under "Savings".
+- Home cash flow (income vs. expenses) and category breakdowns both use all sources (bank plus cards). See `HOME_CASH_FLOW_SOURCE_TYPE` and `HOME_CATEGORY_SOURCE_TYPE` in `src/server/lib/home-analytics.ts`.
 - A `Transfers` category exists for both expense and income. Summaries net it using signed amounts, so outgoing transfers reduce the total.
 - Only `completed` transactions count in summaries. `pending` rows are shown but excluded.
 - Averages and statistics use completed months only (`getLastCompleteMonthEnd`), so a half-finished month does not skew them.
@@ -56,7 +56,7 @@ Spent does not track investments themselves (balances, returns, portfolios).
 - **Savings = income minus expenses** for a period.
 - Expenses must include all household spending: bank expenses plus card purchases. Card bill payments in the bank stay `transfer` so card spending is counted once, from the card files.
 
-**Known issue:** Home cash flow (`getCashFlow`, `getHistoricalTrend`, and the cash-flow averages in `getSpendingStats` in `src/server/db/queries/home.ts`, plus the "This month" total in `src/app/api/home/route.ts`) is scoped to bank sources and excludes `transfer`, so card purchases are counted on neither side. That overstates savings by the month's card spending. The fix is to include card `expense` rows in cash-flow expenses (while keeping bank card-bill rows as `transfer`). Confirm with the user before changing it.
+**Known issue:** the suggested monthly target in budget suggestions (`getMonthlyBankSpend` in `src/server/db/queries/transactions.ts`) still averages bank expenses only, so it omits card spending and suggests a target that is too low.
 
 ### Hidden transactions (unused)
 

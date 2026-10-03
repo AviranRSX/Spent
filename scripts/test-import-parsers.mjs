@@ -2,60 +2,38 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { parseWorkbookBuffer } from "../src/lib/imports/xlsx-parser.js";
-import { buildOpenXmlWorkbook } from "./import-workbook-test-helpers.mjs";
+import {
+  FIXTURE_ACCOUNTS,
+  ISRACARD_REPEATED_HEADER_ROW,
+  PROVIDER_FIXTURES,
+  buildCalWorkbook,
+  buildIsracardWorkbook,
+  buildMaxWorkbook,
+  buildOpenXmlWorkbook,
+} from "./import-workbook-test-helpers.mjs";
 
-async function readSample(name) {
-  const fs = await import("node:fs/promises");
-  return fs.readFile(new URL(`../transactions/${name}`, import.meta.url));
-}
-
-const providerSamples = [
-  ["isracard-example.xlsx", "isracard_bill"],
-  ["max-example.xlsx", "max_bill"],
-  ["example-export.xlsx", "cal_bill"],
-  ["example-export.xlsx", "hapoalim_bank_account"],
-  ["example-export.xlsx", "leumi_bank_account"],
-];
-
-const stableFieldAssertions = {
-  isracard_bill: (transaction) => assert.equal(transaction.accountNumber, "1111"),
-  max_bill: (transaction) => assert.equal(transaction.accountNumber, "2222"),
-  cal_bill: (transaction) => {
-    assert.equal(transaction.accountNumber, "3333");
-    assert.equal(transaction.description, "Example merchant");
-    assert.equal(transaction.originalAmount, -111.1);
-    assert.equal(transaction.chargedAmount, -111.1);
-    assert.equal(transaction.date, "2026-07-31");
-    assert.equal(transaction.processedDate, "2026-07-31");
-    assert.equal(transaction.status, "pending");
-  },
-  hapoalim_bank_account: (transaction) => assert.equal(transaction.accountNumber, "12-345-67890"),
-  leumi_bank_account: (transaction) => assert.equal(transaction.accountNumber, "123-456789/01"),
-};
-
-for (const [fileName, templateType] of providerSamples) {
-  test(`parses current ${templateType} sample`, async () => {
-    const result = await parseWorkbookBuffer(await readSample(fileName), {
+for (const [templateType, , buildFixture] of PROVIDER_FIXTURES) {
+  test(`parses a ${templateType} export`, async () => {
+    const result = await parseWorkbookBuffer(await buildFixture(), {
       templateType,
       sourceLabel: templateType,
     });
     assert.equal(result.transactions.length > 0, true);
-    stableFieldAssertions[templateType](result.transactions[0]);
-    assert.equal(Array.isArray(result.rowIssues), true);
+    assert.equal(result.transactions[0].accountNumber, FIXTURE_ACCOUNTS[templateType]);
+    assert.deepEqual(result.rowIssues, []);
     assert.equal("errors" in result, false);
   });
 }
 
-test("parses current CAL billing dates amounts and pending rows exactly", async () => {
-  const result = await parseWorkbookBuffer(
-    await readSample("example-export.xlsx"),
-    { templateType: "cal_bill", sourceLabel: "CAL" }
-  );
+test("parses CAL billing dates amounts and pending rows exactly", async () => {
+  const result = await parseWorkbookBuffer(await buildCalWorkbook(), {
+    templateType: "cal_bill",
+    sourceLabel: "CAL",
+  });
 
-  assert.equal(result.transactions.length, 51);
   assert.deepEqual(result.rowIssues, []);
   assert.deepEqual(
-    result.transactions.slice(0, 2).map((transaction) => ({
+    result.transactions.map((transaction) => ({
       accountNumber: transaction.accountNumber,
       description: transaction.description,
       originalAmount: transaction.originalAmount,
@@ -63,70 +41,60 @@ test("parses current CAL billing dates amounts and pending rows exactly", async 
       date: transaction.date,
       processedDate: transaction.processedDate,
       status: transaction.status,
+      type: transaction.type,
     })),
     [
       {
-        accountNumber: "3333",
-        description: "Example merchant",
-        originalAmount: -111.1,
-        chargedAmount: -111.1,
+        accountNumber: "4321",
+        description: "מתנה לדוגמה",
+        originalAmount: -150.25,
+        chargedAmount: -150.25,
         date: "2026-07-31",
         processedDate: "2026-07-31",
         status: "pending",
+        type: "normal",
       },
       {
-        accountNumber: "3333",
-        description: "Example merchant",
-        originalAmount: -22.22,
-        chargedAmount: -22.22,
+        accountNumber: "4321",
+        description: "מאפייה לדוגמה",
+        originalAmount: -42.9,
+        chargedAmount: -42.9,
         date: "2026-07-30",
         processedDate: "2026-07-30",
         status: "pending",
+        type: "normal",
+      },
+      {
+        accountNumber: "4321",
+        description: "רהיטים לדוגמה",
+        originalAmount: -900,
+        chargedAmount: -900,
+        date: "2026-07-29",
+        processedDate: "2026-08-10",
+        status: "completed",
+        type: "installments",
       },
     ]
   );
-  assert.deepEqual(
-    {
-      accountNumber: result.transactions[2].accountNumber,
-      originalAmount: result.transactions[2].originalAmount,
-      chargedAmount: result.transactions[2].chargedAmount,
-      date: result.transactions[2].date,
-      processedDate: result.transactions[2].processedDate,
-      status: result.transactions[2].status,
-    },
-    {
-      accountNumber: "3333",
-      originalAmount: -333.3,
-      chargedAmount: -333.3,
-      date: "2026-07-29",
-      processedDate: "2026-08-10",
-      status: "completed",
-    }
-  );
 });
 
-for (const [fileName, repeatedHeaderRow, followingDescription] of [
-  ["isracard-example.xlsx", 37, "EXAMPLE HOTEL"],
-  ["isracard-example.xlsx", 21, "Example merchant"],
-]) {
-  test(`ignores repeated Isracard section header in ${fileName}`, async () => {
-    const result = await parseWorkbookBuffer(await readSample(fileName), {
-      templateType: "isracard_bill",
-      sourceLabel: "Isracard",
-    });
-
-    assert.equal(
-      result.rowIssues.some((issue) => issue.rowNumber === repeatedHeaderRow),
-      false
-    );
-    assert.equal(
-      result.transactions.some(
-        (transaction) => transaction.description === followingDescription
-      ),
-      true
-    );
+test("ignores a repeated Isracard section header", async () => {
+  const result = await parseWorkbookBuffer(await buildIsracardWorkbook(), {
+    templateType: "isracard_bill",
+    sourceLabel: "Isracard",
   });
-}
+
+  assert.equal(
+    result.rowIssues.some((issue) => issue.rowNumber === ISRACARD_REPEATED_HEADER_ROW),
+    false
+  );
+  const foreign = result.transactions.find(
+    (transaction) => transaction.description === "EXAMPLE HOTEL"
+  );
+  assert.equal(foreign?.originalCurrency, "USD");
+  assert.equal(foreign?.chargedCurrency, "ILS");
+  assert.equal(foreign?.chargedAmount, -441.6);
+});
 
 function buildMixedIsracardWorkbook() {
   return buildOpenXmlWorkbook([
@@ -200,14 +168,14 @@ test("reports exact Max row problems", async () => {
 });
 
 test("imports Max rows with only an original amount as regular transactions", async () => {
-  const result = await parseWorkbookBuffer(
-    await readSample("max-example.xlsx"),
-    { templateType: "max_bill", sourceLabel: "Max" }
-  );
+  const result = await parseWorkbookBuffer(await buildMaxWorkbook(), {
+    templateType: "max_bill",
+    sourceLabel: "Max",
+  });
 
   assert.deepEqual(result.rowIssues, []);
   assert.deepEqual(
-    result.transactions.map((transaction) => ({
+    result.transactions.slice(1).map((transaction) => ({
       accountNumber: transaction.accountNumber,
       description: transaction.description,
       originalAmount: transaction.originalAmount,
@@ -218,20 +186,20 @@ test("imports Max rows with only an original amount as regular transactions", as
     })),
     [
       {
-        accountNumber: "2222",
-        description: "Example merchant",
-        originalAmount: -111,
+        accountNumber: "5678",
+        description: "חנות לדוגמה",
+        originalAmount: -120,
         originalCurrency: "ILS",
-        chargedAmount: -111,
+        chargedAmount: -120,
         chargedCurrency: "ILS",
         status: "completed",
       },
       {
-        accountNumber: "2222",
-        description: "Example merchant",
-        originalAmount: -222,
+        accountNumber: "5678",
+        description: "חנות לדוגמה",
+        originalAmount: -75,
         originalCurrency: "ILS",
-        chargedAmount: -222,
+        chargedAmount: -75,
         chargedCurrency: "ILS",
         status: "completed",
       },

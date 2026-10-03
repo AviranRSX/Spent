@@ -49,7 +49,7 @@ Treat all of these as sensitive: account numbers, card last-4 digits, transactio
 - **Logs and debug output.** Never paste real rows into anything that gets committed, shared, or published as an artifact.
 - **Before every commit,** read the diff and look for anything that came from a real export. If real data is already in a commit, stop and tell the user. Removing it needs a history rewrite and force push, which only the user can approve.
 
-**Known issue:** `scripts/test-import-detection.mjs`, `scripts/test-import-parsers.mjs`, and parts of `scripts/test-transaction-ai-logic.mjs` read real exports from `/transactions/` and assert values copied from them. Do not extend this pattern. They should move to synthetic fixtures.
+Import tests build every provider's export from synthetic builders in `scripts/import-workbook-test-helpers.mjs` (`PROVIDER_FIXTURES`). They mirror each real layout with invented values. When a new export variant appears, add a builder there instead of pointing a test at a real file.
 
 ## Money semantics
 

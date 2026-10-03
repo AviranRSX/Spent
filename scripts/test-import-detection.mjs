@@ -1,33 +1,14 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import parser from "../src/lib/imports/xlsx-parser.js";
-import { buildOpenXmlWorkbook } from "./import-workbook-test-helpers.mjs";
+import { PROVIDER_FIXTURES, buildOpenXmlWorkbook } from "./import-workbook-test-helpers.mjs";
 
 const { detectWorkbookBuffer, getOpenXmlArchiveLimitIssue } = parser;
 
-const samples = [
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["isracard-example.xlsx", "isracard_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["max-example.xlsx", "max_bill", "card"],
-  ["example-export.xlsx", "cal_bill", "card"],
-  ["example-export.xlsx", "hapoalim_bank_account", "bank"],
-  ["example-export.xlsx", "leumi_bank_account", "bank"],
-];
-
-for (const [fileName, templateType, kind] of samples) {
-  test(`detects ${fileName} from workbook content`, async () => {
-    const buffer = await readFile(new URL(`../transactions/${fileName}`, import.meta.url));
+for (const [templateType, kind, buildFixture] of PROVIDER_FIXTURES) {
+  test(`detects a ${templateType} export from workbook content`, async () => {
+    const buffer = await buildFixture();
     assert.deepEqual(await detectWorkbookBuffer(buffer), {
       ok: true,
       templateType,

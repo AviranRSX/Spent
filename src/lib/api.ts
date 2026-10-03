@@ -320,8 +320,9 @@ export function getSummary(params: {
   return fetchJSON<DashboardSummary>(`/api/summary?${searchParams}`);
 }
 
-export function getHome() {
-  return fetchJSON<HomePayload>(`/api/home`);
+export function getHome(month?: string) {
+  const qs = month ? `?month=${encodeURIComponent(month)}` : "";
+  return fetchJSON<HomePayload>(`/api/home${qs}`);
 }
 
 export function getActivity() {

@@ -45,6 +45,8 @@
   },
   "home": {
     "pageTitle": "Home",
+    "trendTitle": "12-month cash flow",
+    "budgetPaceTitle": "Budget pace",
     "couldntLoad": "Couldn't load this section.",
     "thisMonthLabel": "This {month}",
     "spentThisMonth": "Spent this month",

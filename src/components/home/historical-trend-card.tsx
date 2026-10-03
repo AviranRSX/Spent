@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { CardShell } from "./card-shell";
-import { formatCurrency } from "@/lib/formatters";
+import { formatCurrency, formatMonthKey } from "@/lib/formatters";
+import type { Locale } from "@/i18n/routing";
 import type { HomeHistoricalTrendPoint } from "@/lib/types";
 
 interface Props {
@@ -12,12 +13,13 @@ interface Props {
 
 export function HistoricalTrendCard({ data }: Props) {
   const t = useTranslations("home");
+  const locale = useLocale() as Locale;
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const hasData = data.some((d) => d.income > 0 || d.expenses > 0);
 
   if (!hasData) {
     return (
-      <CardShell label={t("last6Months")}>
+      <CardShell label={t("trendTitle")}>
         <div className="flex flex-1 items-center justify-center py-6 text-sm text-muted-foreground">
           {t("notEnoughHistory")}
         </div>
@@ -29,13 +31,13 @@ export function HistoricalTrendCard({ data }: Props) {
   const active = hoverIdx != null ? data[hoverIdx] : data[data.length - 1];
 
   return (
-    <CardShell label={t("last6Months")}>
+    <CardShell label={t("trendTitle")}>
       <div className="flex flex-1 flex-col justify-between gap-4">
         <div>
           <div className="flex items-baseline justify-between gap-3">
             <div>
               <div className="text-xs text-muted-foreground">
-                {active.label}
+                {formatMonthKey(active.month, locale, "short", false)}
                 {active.isCurrent ? ` ${t("soFar")}` : ""}
               </div>
               <div className="mt-1 font-serif text-2xl tabular-nums">
@@ -75,6 +77,7 @@ function BarChart({
   hoverIdx: number | null;
   onHover: (i: number | null) => void;
 }) {
+  const locale = useLocale() as Locale;
   const width = 100;
   const height = 36;
   const barWidth = width / data.length;
@@ -128,7 +131,7 @@ function BarChart({
             key={d.month}
             className={d.isCurrent ? "font-medium text-foreground" : ""}
           >
-            {d.label}
+            {formatMonthKey(d.month, locale, "short", false)}
           </span>
         ))}
       </div>

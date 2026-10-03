@@ -100,11 +100,11 @@ test("home spending stats end at the previous complete month", () => {
   );
 });
 
-test("home cash-flow trend fills six months with income and expenses", () => {
+test("home cash-flow trend fills each month and flags current and selected", () => {
   const trend = buildMonthlyCashFlowTrend(
     [
-      { key: "2026-01", label: "Jan", isCurrent: false },
-      { key: "2026-02", label: "Feb", isCurrent: true },
+      { key: "2026-01", isCurrent: false, isSelected: true },
+      { key: "2026-02", isCurrent: true, isSelected: false },
     ],
     [
       { month: "2026-01", kind: "income", total: 10000 },
@@ -114,22 +114,8 @@ test("home cash-flow trend fills six months with income and expenses", () => {
   );
 
   assert.deepEqual(trend, [
-    {
-      month: "2026-01",
-      label: "Jan",
-      income: 10000,
-      expenses: 6500,
-      net: 3500,
-      isCurrent: false,
-    },
-    {
-      month: "2026-02",
-      label: "Feb",
-      income: 0,
-      expenses: 1200,
-      net: -1200,
-      isCurrent: true,
-    },
+    { month: "2026-01", income: 10000, expenses: 6500, net: 3500, isCurrent: false, isSelected: true },
+    { month: "2026-02", income: 0, expenses: 1200, net: -1200, isCurrent: true, isSelected: false },
   ]);
 });
 
@@ -360,4 +346,209 @@ test("home and transactions messages have matching keys in English and Hebrew", 
   const homeText = JSON.stringify(en.home) + JSON.stringify(he.home);
   const emDash = String.fromCharCode(0x2014);
   assert.equal(homeText.includes(emDash), false, "no em dashes in home messages");
+});
+
+// Workspace 2: invented household with history from June 2026.
+// Monthly expenses: Jun 4000, Jul 5000, Aug 6000, Sep 5000 (300 of it on
+// Sep 2), Oct 600 so far. Income: 10000, 10000, 12000, 8000, 9000.
+let homeFixturePromise;
+function getHomeFixture() {
+  homeFixturePromise ??= seedHomeFixture();
+  return homeFixturePromise;
+}
+
+async function seedHomeFixture() {
+  const { getDb } = await import("../src/server/db/index.ts");
+  const db = getDb();
+  const workspaceId = 2;
+  db.prepare(
+    `INSERT INTO workspaces (id, name, slug) VALUES (?, 'Home fixture', 'home-fixture')`
+  ).run(workspaceId);
+  const syncRunId = db
+    .prepare(
+      `INSERT INTO sync_runs (workspace_id, provider, started_at, status, scrape_from_date)
+       VALUES (?, 'test', '2026-06-01', 'completed', '2026-06-01')`
+    )
+    .run(workspaceId).lastInsertRowid;
+
+  const addCategory = (name, { parentId = null, kind = "expense", color }) =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO categories (workspace_id, parent_id, name, color, kind)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+        .run(workspaceId, parentId, name, color, kind).lastInsertRowid
+    );
+  const food = addCategory("Food", { color: "#E7A875" });
+  const groceries = addCategory("Groceries", { parentId: food, color: "#8FBC8A" });
+  const restaurants = addCategory("Restaurants", { parentId: food, color: "#E29C71" });
+  const utilities = addCategory("Utilities", { color: "#7D90CA" });
+  const transfers = addCategory("Transfers", { color: "#A2ABBB" });
+  const salary = addCategory("Salary", { kind: "income", color: "#65C1D1" });
+
+  const insert = db.prepare(
+    `INSERT INTO transactions
+       (workspace_id, account_number, date, processed_date, original_amount,
+        original_currency, charged_amount, description, type, status,
+        provider, sync_run_id, dedup_hash, kind, category_id)
+     VALUES (?, 'acct', ?, ?, ?, 'ILS', ?, 'Synthetic row', 'normal', ?, ?, ?, ?, ?, ?)`
+  );
+  let rowIndex = 0;
+  const add = (date, amount, kind, categoryId, options = {}) => {
+    const provider =
+      options.provider ?? (kind === "income" ? "hapoalim_bank_account" : "isracard_bill");
+    rowIndex += 1;
+    insert.run(
+      workspaceId, date, date, amount, amount, options.status ?? "completed",
+      provider, syncRunId, `home-fixture-${rowIndex}`, kind, categoryId
+    );
+  };
+
+  for (const [date, amount] of [
+    ["2026-06-01", 10000],
+    ["2026-07-01", 10000],
+    ["2026-08-01", 12000],
+    ["2026-09-01", 8000],
+    ["2026-10-01", 9000],
+  ]) {
+    add(date, amount, "income", salary);
+  }
+  for (const [date, amount, categoryId] of [
+    ["2026-06-12", -2500, groceries],
+    ["2026-06-20", -1500, utilities],
+    ["2026-07-12", -3000, groceries],
+    ["2026-07-14", -1000, restaurants],
+    ["2026-07-20", -1000, utilities],
+    ["2026-08-12", -3500, groceries],
+    ["2026-08-14", -1500, restaurants],
+    ["2026-08-20", -1000, utilities],
+    ["2026-09-02", -300, groceries],
+    ["2026-09-10", -2700, groceries],
+    ["2026-09-14", -1000, restaurants],
+    ["2026-09-20", -1000, utilities],
+    ["2026-10-02", -250, groceries],
+    ["2026-10-02", -150, restaurants],
+    ["2026-10-02", -120, utilities],
+    ["2026-10-02", -80, null],
+  ]) {
+    add(date, amount, "expense", categoryId);
+  }
+  // Rows that must never count: pending, Transfers category, card-bill transfer.
+  add("2026-10-02", -999, "expense", groceries, { status: "pending" });
+  add("2026-10-02", -500, "expense", transfers);
+  add("2026-10-02", -2000, "transfer", null, { provider: "hapoalim_bank_account" });
+
+  db.prepare(
+    `INSERT INTO workspace_settings (workspace_id, key, value)
+     VALUES (?, 'monthly_target', '8000'), (?, 'payday_day', '10')`
+  ).run(workspaceId, workspaceId);
+
+  return {
+    workspaceId,
+    categories: { food, groceries, restaurants, utilities, transfers, salary },
+  };
+}
+
+test("home KPIs for the current month compare the same days last month and average completed months only", async () => {
+  const { workspaceId } = await getHomeFixture();
+  const { getHomeKpis } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+
+  const kpis = getHomeKpis(workspaceId, buildHomeMonthRange("2026-10", FIXTURE_NOW));
+
+  assert.deepEqual(kpis, {
+    month: "2026-10",
+    income: 9000,
+    expenses: 600,
+    net: 8400,
+    savingsRate: 8400 / 9000,
+    prev: { income: 8000, expenses: 300, net: 7700, savingsRate: 7700 / 8000 },
+    // June to September only: October is still in progress and May has no data.
+    avg6: { income: 10000, expenses: 5000, net: 5000, savingsRate: 0.5, months: 4 },
+    isCurrentMonth: true,
+    dayOfMonth: 3,
+    daysInMonth: 31,
+  });
+});
+
+test("home KPIs for a past month compare full months and average the months before it", async () => {
+  const { workspaceId } = await getHomeFixture();
+  const { getHomeKpis } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+
+  const kpis = getHomeKpis(workspaceId, buildHomeMonthRange("2026-08", FIXTURE_NOW));
+
+  assert.deepEqual(kpis, {
+    month: "2026-08",
+    income: 12000,
+    expenses: 6000,
+    net: 6000,
+    savingsRate: 0.5,
+    prev: { income: 10000, expenses: 5000, net: 5000, savingsRate: 0.5 },
+    avg6: { income: 10000, expenses: 4500, net: 5500, savingsRate: 5500 / 10000, months: 2 },
+    isCurrentMonth: false,
+    dayOfMonth: 31,
+    daysInMonth: 31,
+  });
+});
+
+test("home KPIs for a workspace without history have no average and no savings rate", async () => {
+  await getHomeFixture();
+  const { getHomeKpis } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+
+  const kpis = getHomeKpis(99, buildHomeMonthRange("2026-10", FIXTURE_NOW));
+
+  assert.equal(kpis.avg6, null);
+  assert.equal(kpis.savingsRate, null);
+  assert.equal(kpis.expenses, 0);
+});
+
+test("home cash-flow trend returns 12 months ending at the selected month", async () => {
+  const { workspaceId } = await getHomeFixture();
+  const { getCashFlowTrend } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+
+  const october = getCashFlowTrend(workspaceId, buildHomeMonthRange("2026-10", FIXTURE_NOW), 12, FIXTURE_NOW);
+  assert.equal(october.length, 12);
+  assert.deepEqual(october[0], {
+    month: "2025-11", income: 0, expenses: 0, net: 0, isCurrent: false, isSelected: false,
+  });
+  assert.deepEqual(october[10], {
+    month: "2026-09", income: 8000, expenses: 5000, net: 3000, isCurrent: false, isSelected: false,
+  });
+  assert.deepEqual(october[11], {
+    month: "2026-10", income: 9000, expenses: 600, net: 8400, isCurrent: true, isSelected: true,
+  });
+
+  const august = getCashFlowTrend(workspaceId, buildHomeMonthRange("2026-08", FIXTURE_NOW), 12, FIXTURE_NOW);
+  assert.equal(august[11].month, "2026-08");
+  assert.equal(august[11].isSelected, true);
+  assert.equal(august[11].isCurrent, false);
+});
+
+test("budget pace tracks the current month and gives a final view of past months", async () => {
+  const { workspaceId } = await getHomeFixture();
+  const { getBudgetPace } = await import("../src/server/db/queries/home.ts");
+  const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
+
+  assert.deepEqual(getBudgetPace(workspaceId, buildHomeMonthRange("2026-10", FIXTURE_NOW), FIXTURE_NOW), {
+    month: "2026-10",
+    spent: 600,
+    budget: 8000,
+    deltaVsLastMonth: 100,
+    daysUntilPayday: 7,
+    timeElapsedPercent: (3 / 31) * 100,
+    isPast: false,
+  });
+  assert.deepEqual(getBudgetPace(workspaceId, buildHomeMonthRange("2026-08", FIXTURE_NOW), FIXTURE_NOW), {
+    month: "2026-08",
+    spent: 6000,
+    budget: 8000,
+    deltaVsLastMonth: 20,
+    daysUntilPayday: null,
+    timeElapsedPercent: 100,
+    isPast: true,
+  });
 });

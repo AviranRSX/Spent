@@ -1,8 +1,10 @@
 import "server-only";
 
 import { getDb } from "../index";
-import { toLocalISODate } from "../../lib/date-utils";
+import { getWorkspaceSetting } from "./settings";
+import { daysUntil, nextPayday } from "../../lib/pace";
 import {
+  buildCashFlowAverages,
   buildMonthlyCashFlowTrend,
   HOME_CASH_FLOW_SOURCE_TYPE,
   HOME_CATEGORY_SOURCE_TYPE,
@@ -11,11 +13,22 @@ import {
   BANK_TRANSACTION_PROVIDERS,
   type TransactionSourceType,
 } from "@/lib/transaction-source-types";
+import {
+  getAverageWindow,
+  HOME_AVERAGE_MONTHS,
+  monthKeyFromDate,
+  previousComparisonRange,
+  trendMonthKeys,
+  type HomeMonthRange,
+} from "@/lib/home-month";
+import { buildHomeKpis } from "@/lib/home-kpis";
 import type {
   HomeBankHealthItem,
+  HomeBudgetPace,
   HomeCashFlow,
   HomeCategorySnapshotItem,
   HomeHistoricalTrendPoint,
+  HomeKpis,
   HomeNeedsAttention,
   HomeRecentTransaction,
   HomeSpendingStats,
@@ -104,58 +117,134 @@ export function getCashFlow(
   };
 }
 
-export function getHistoricalTrend(
+interface MonthlyCashFlowRow {
+  month: string;
+  kind: "income" | "expense";
+  total: number;
+}
+
+function getMonthlyCashFlowRows(
   workspaceId: number,
-  monthsBack: number
+  from: string,
+  to: string
+): MonthlyCashFlowRow[] {
+  return getDb()
+    .prepare(
+      `SELECT strftime('%Y-%m', t.date) as month,
+              t.kind as kind,
+              CASE
+                WHEN t.kind = 'income' THEN SUM(t.charged_amount)
+                ELSE SUM(ABS(t.charged_amount))
+              END as total
+       FROM transactions t
+       WHERE t.workspace_id = ? AND t.date >= ? AND t.date <= ?
+         AND t.status = 'completed'
+         AND t.kind IN ('income', 'expense')
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
+         AND ${EXCLUDE_TRANSFERS_SQL}
+       GROUP BY month, t.kind
+       ORDER BY month ASC`
+    )
+    .all(workspaceId, from, to, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as MonthlyCashFlowRow[];
+}
+
+/** First "YYYY-MM" with completed income or expense rows, or null. */
+export function getFirstActivityMonth(workspaceId: number): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT MIN(strftime('%Y-%m', t.date)) as month
+       FROM transactions t
+       WHERE t.workspace_id = ?
+         AND t.status = 'completed'
+         AND t.kind IN ('income', 'expense')
+         AND ${HOME_CASH_FLOW_SOURCE_SQL}
+         AND ${EXCLUDE_TRANSFERS_SQL}`
+    )
+    .get(workspaceId, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as { month: string | null };
+  return row.month;
+}
+
+export function getHomeKpis(workspaceId: number, month: HomeMonthRange): HomeKpis {
+  const current = getCashFlow(workspaceId, month.from, month.to);
+  const prevRange = previousComparisonRange(month);
+  const prev = getCashFlow(workspaceId, prevRange.from, prevRange.to);
+  const window = getAverageWindow(
+    month,
+    getFirstActivityMonth(workspaceId),
+    HOME_AVERAGE_MONTHS
+  );
+  const average = window
+    ? buildCashFlowAverages(
+        getMonthlyCashFlowRows(workspaceId, window.from, window.to),
+        window.months.length
+      )
+    : null;
+
+  return buildHomeKpis(
+    month,
+    current,
+    prev,
+    average && window
+      ? {
+          income: average.meanIncome,
+          expenses: average.meanExpense,
+          months: window.months.length,
+        }
+      : null
+  );
+}
+
+export function getCashFlowTrend(
+  workspaceId: number,
+  month: HomeMonthRange,
+  monthCount: number,
+  now: Date
 ): HomeHistoricalTrendPoint[] {
-  const db = getDb();
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  const months: {
-    key: string;
-    label: string;
-    from: string;
-    to: string;
-    isCurrent: boolean;
-  }[] = [];
-  for (let i = monthsBack - 1; i >= 0; i--) {
-    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-    const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}`;
-    months.push({
+  const keys = trendMonthKeys(month.key, monthCount);
+  const currentKey = monthKeyFromDate(now);
+  const rows = getMonthlyCashFlowRows(workspaceId, `${keys[0]}-01`, month.to);
+  return buildMonthlyCashFlowTrend(
+    keys.map((key) => ({
       key,
-      label: start.toLocaleDateString("en-US", { month: "short" }),
-      from: toLocalISODate(start),
-      to: toLocalISODate(end),
-      isCurrent: key === currentMonthKey,
-    });
-  }
+      isCurrent: key === currentKey,
+      isSelected: key === month.key,
+    })),
+    rows
+  );
+}
 
-  const monthKeys = months.map((month) => month.key);
-  const placeholders = monthKeys.map(() => "?").join(",");
-  const rows = db.prepare(
-    `SELECT strftime('%Y-%m', t.date) as month,
-            t.kind as kind,
-            CASE
-              WHEN t.kind = 'income' THEN SUM(t.charged_amount)
-              ELSE SUM(ABS(t.charged_amount))
-            END as total
-     FROM transactions t
-     WHERE t.workspace_id = ?
-       AND t.status = 'completed'
-       AND t.kind IN ('income', 'expense')
-       AND strftime('%Y-%m', t.date) IN (${placeholders})
-       AND ${HOME_CASH_FLOW_SOURCE_SQL}
-       AND ${EXCLUDE_TRANSFERS_SQL}
-     GROUP BY month, t.kind`
-  ).all(workspaceId, ...monthKeys, ...HOME_CASH_FLOW_SOURCE_PROVIDERS) as Array<{
-    month: string;
-    kind: "income" | "expense";
-    total: number;
-  }>;
+export function getBudgetPace(
+  workspaceId: number,
+  month: HomeMonthRange,
+  now: Date
+): HomeBudgetPace {
+  const spent = getCashFlow(workspaceId, month.from, month.to).expenses;
+  const prevRange = previousComparisonRange(month);
+  const prevSpent = getCashFlow(workspaceId, prevRange.from, prevRange.to).expenses;
 
-  return buildMonthlyCashFlowTrend(months, rows);
+  const targetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
+  const parsedTarget = targetRaw != null ? Number(targetRaw) : NaN;
+  const budget = Number.isFinite(parsedTarget) && parsedTarget > 0 ? parsedTarget : 0;
+
+  const isPast = !month.isCurrent;
+  const timeElapsedPercent = isPast
+    ? 100
+    : Math.min(100, (Math.max(1, month.elapsedDays) / month.daysInMonth) * 100);
+
+  const paydayDay = Number(getWorkspaceSetting(workspaceId, "payday_day") ?? "1");
+  const daysUntilPayday = isPast
+    ? null
+    : Math.max(0, daysUntil(nextPayday(now, paydayDay), now));
+
+  return {
+    month: month.key,
+    spent,
+    budget,
+    deltaVsLastMonth: prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null,
+    daysUntilPayday,
+    timeElapsedPercent,
+    isPast,
+  };
 }
 
 export function getSpendingStats(
@@ -218,33 +307,7 @@ export function getSpendingStats(
     color: string;
     amount: number;
   }>;
-  const cashFlowRows = db.prepare(
-    `SELECT strftime('%Y-%m', t.date) as month,
-            t.kind as kind,
-            CASE
-              WHEN t.kind = 'income' THEN SUM(t.charged_amount)
-              ELSE SUM(ABS(t.charged_amount))
-            END as total
-     FROM transactions t
-     WHERE t.workspace_id = ?
-       AND t.date >= ?
-       AND t.date <= ?
-       AND t.status = 'completed'
-       AND t.kind IN ('income', 'expense')
-       AND ${HOME_CASH_FLOW_SOURCE_SQL}
-       AND ${EXCLUDE_TRANSFERS_SQL}
-     GROUP BY month, t.kind
-     ORDER BY month ASC`
-  ).all(
-    workspaceId,
-    trendFrom,
-    to,
-    ...HOME_CASH_FLOW_SOURCE_PROVIDERS
-  ) as Array<{
-    month: string;
-    kind: "income" | "expense";
-    total: number;
-  }>;
+  const cashFlowRows = getMonthlyCashFlowRows(workspaceId, trendFrom, to);
   const monthKeys = oldest.month != null ? getMonthRange(startMonth, toMonth) : [];
   const monthlyCashFlow = monthKeys.map((month) => {
     const income = cashFlowRows

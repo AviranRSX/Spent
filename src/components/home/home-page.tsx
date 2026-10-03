@@ -39,6 +39,8 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
   const t = useTranslations("home");
   const skeletonLabels = useMemo<Record<HomeSection, string>>(
     () => ({
+      kpis: t("cashFlowTitle"),
+      budgetPace: t("budgetPaceTitle"),
       thisMonth: t("thisMonthLabel", { month: "" }).trim() || t("topCategoriesTitle"),
       cashFlow: t("cashFlowTitle"),
       categorySnapshot: t("topCategoriesTitle"),
@@ -59,7 +61,7 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["home"],
-    queryFn: getHome,
+    queryFn: () => getHome(),
   });
 
   const [activityPopoverOpen, setActivityPopoverOpen] = useState(false);
@@ -178,6 +180,10 @@ function renderSection(
 
 function renderCard(section: HomeSection, data: HomePayload) {
   switch (section) {
+    case "kpis":
+    case "budgetPace":
+      // Not placed in the grid yet.
+      return null;
     case "thisMonth":
       return data.thisMonth ? <ThisMonthCard data={data.thisMonth} /> : null;
     case "cashFlow":
@@ -210,6 +216,8 @@ function renderCard(section: HomeSection, data: HomePayload) {
 }
 
 const SKELETON_HEIGHTS: Record<HomeSection, number> = {
+  kpis: 120,
+  budgetPace: 180,
   thisMonth: 180,
   cashFlow: 160,
   categorySnapshot: 220,

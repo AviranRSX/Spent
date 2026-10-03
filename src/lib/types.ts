@@ -149,6 +149,8 @@ export interface Budget {
 }
 
 export type HomeSection =
+  | "kpis"
+  | "budgetPace"
   | "thisMonth"
   | "cashFlow"
   | "categorySnapshot"
@@ -166,6 +168,18 @@ export interface HomeThisMonth {
   daysUntilPayday: number;
   timeElapsedPercent: number;
   monthLabel: string;
+}
+
+export interface HomeBudgetPace {
+  /** "YYYY-MM" */
+  month: string;
+  spent: number;
+  budget: number;
+  deltaVsLastMonth: number | null;
+  /** Null for past months. */
+  daysUntilPayday: number | null;
+  timeElapsedPercent: number;
+  isPast: boolean;
 }
 
 export interface HomeCashFlow {
@@ -202,12 +216,15 @@ export interface HomeCategorySnapshotItem {
 }
 
 export interface HomeHistoricalTrendPoint {
+  /** "YYYY-MM"; labels are formatted on the client in the active locale. */
   month: string;
-  label: string;
   income: number;
   expenses: number;
   net: number;
+  /** The calendar month that is still in progress. */
   isCurrent: boolean;
+  /** The month chosen in the month picker. */
+  isSelected: boolean;
 }
 
 export interface HomeCategoryMean {
@@ -275,6 +292,10 @@ export interface HomeSectionError {
 }
 
 export interface HomePayload {
+  /** The month every section was computed for, "YYYY-MM". */
+  month: string;
+  kpis: HomeKpis | null;
+  budgetPace: HomeBudgetPace | null;
   thisMonth: HomeThisMonth | null;
   cashFlow: HomeCashFlow | null;
   categorySnapshot: HomeCategorySnapshotItem[] | null;

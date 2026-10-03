@@ -45,6 +45,8 @@
   },
   "home": {
     "pageTitle": "בית",
+    "trendTitle": "תזרים מזומנים ל-12 חודשים",
+    "budgetPaceTitle": "קצב תקציב",
     "couldntLoad": "לא הצלחנו לטעון את המקטע הזה.",
     "thisMonthLabel": "{month} זה",
     "spentThisMonth": "הוצא החודש",

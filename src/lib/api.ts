@@ -16,6 +16,15 @@ import type {
   ImportTemplateType,
   DataSourceMode,
 } from "./types";
+import type {
+  NeedsTripItem,
+  TransactionTripInfo,
+  Trip,
+  TripDetail,
+  TripInput,
+  TripPatch,
+  TripsOverview,
+} from "./trips/types";
 import type { TransactionSourceType } from "./transaction-source-types";
 import { buildImportCommitFiles } from "./imports/batch-staging";
 import type { ImportPreviewFile } from "./imports/import-types";
@@ -856,4 +865,75 @@ export function pullOllamaModel(
   })();
 
   return { cancel: () => controller.abort() };
+}
+
+export function getTrips() {
+  return fetchJSON<TripsOverview>("/api/trips");
+}
+
+export function createTrip(input: TripInput) {
+  return fetchJSON<Trip>("/api/trips", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateTrip(id: number, patch: TripPatch) {
+  return fetchJSON<Trip>(`/api/trips/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteTrip(id: number) {
+  return fetchJSON<{ success: boolean }>(`/api/trips/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export function getTripDetail(id: number) {
+  return fetchJSON<TripDetail>(`/api/trips/${id}`);
+}
+
+export function detectTrips() {
+  return fetchJSON<{ created: number }>("/api/trips/detect", { method: "POST" });
+}
+
+export function getNeedsTrip() {
+  return fetchJSON<{ items: NeedsTripItem[] }>("/api/trips/needs-trip");
+}
+
+export function assignTransactionsToTrip(
+  transactionIds: number[],
+  tripId: number | null
+) {
+  return fetchJSON<{ success: boolean; count: number }>(
+    "/api/trips/assignments",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactionIds, tripId }),
+    }
+  );
+}
+
+export function revertTripAssignments(transactionIds: number[]) {
+  return fetchJSON<{ success: boolean; count: number }>(
+    "/api/trips/assignments",
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transactionIds }),
+    }
+  );
+}
+
+export function getTripMemberships(transactionIds: number[]) {
+  const sp = new URLSearchParams();
+  for (const id of transactionIds) sp.append("ids", String(id));
+  return fetchJSON<Record<number, TransactionTripInfo>>(
+    `/api/trips/memberships?${sp}`
+  );
 }

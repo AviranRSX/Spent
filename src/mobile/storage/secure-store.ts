@@ -22,8 +22,14 @@ export async function getSecret(key: SecretKey): Promise<string | null> {
   const plugin = await storage();
   // get() rejects for a missing key, so check first.
   if (!(await storedKeys(plugin)).has(PREFIX + key)) return null;
-  const { value } = await plugin.get({ key: PREFIX + key });
-  return value;
+  try {
+    const { value } = await plugin.get({ key: PREFIX + key });
+    return value;
+  } catch {
+    // The key is listed but can't be decrypted, for example after the
+    // Keystore key was lost. Treat it as unset so setup asks again.
+    return null;
+  }
 }
 
 export async function setSecret(key: SecretKey, value: string): Promise<void> {

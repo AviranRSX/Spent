@@ -263,6 +263,27 @@ test("a network failure throws offline", async () => {
   await assert.rejects(client.findSpentFolders(), { message: "offline" });
 });
 
+function brokenBody() {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1, 2]));
+      controller.error(new TypeError("terminated"));
+    },
+  });
+  return new Response(stream, { status: 200 });
+}
+
+test("a connection drop while reading a body throws offline", async () => {
+  const { fetchImpl } = fakeFetch([[() => true, brokenBody]]);
+  const client = new DriveClient({ getAccessToken: tokenSource().getAccessToken, fetchImpl });
+
+  await assert.rejects(client.download("file-1"), { message: "offline" });
+  await assert.rejects(client.findSpentFolders(), { message: "offline" });
+  await assert.rejects(client.getFileMeta(FOLDER_ID, "snapshot.spent.enc"), {
+    message: "offline",
+  });
+});
+
 test("download returns the media bytes", async () => {
   const { fetchImpl, calls } = fakeFetch([
     [

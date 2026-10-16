@@ -53,6 +53,19 @@ function withParams(base: string, params: Record<string, string>): string {
   return url.toString();
 }
 
+/**
+ * Reads a response body. The connection can drop after the headers arrive,
+ * which rejects the read, so that is reported as `offline` too. A 2xx body
+ * that is not valid JSON is a `drive_error`.
+ */
+async function readBody<T>(read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    throw new DriveError(error instanceof SyntaxError ? "drive_error" : "offline");
+  }
+}
+
 // Folders shared with the account (the spouse case) and shared drives are
 // only visible with these flags.
 const SHARED = { supportsAllDrives: "true" };
@@ -155,7 +168,7 @@ export class DriveClient {
     const response = await this.request(
       withParams(`${API}/${encodeURIComponent(fileId)}`, { ...SHARED, alt: "media" })
     );
-    return new Uint8Array(await response.arrayBuffer());
+    return new Uint8Array(await readBody(() => response.arrayBuffer()));
   }
 
   /** Creates `name` in the folder, or replaces its content if it exists. */
@@ -222,7 +235,7 @@ export class DriveClient {
 
   private async json(url: string, options: RequestOptions = {}): Promise<unknown> {
     const response = await this.request(url, options);
-    return response.json();
+    return readBody(() => response.json());
   }
 
   /** One authorized request: a 401 gets one forced token refresh and one retry. */

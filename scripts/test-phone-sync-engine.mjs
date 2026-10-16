@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {
+import fs, {
   existsSync,
   mkdirSync,
   readdirSync,
@@ -430,6 +430,40 @@ test("an unreadable change file is not retried or re-snapshotted every poll", as
     engine.stopPhoneSync();
     settings.setPhoneSyncPassphrase(PASSPHRASE);
   }
+});
+
+test("the write probe runs only when a snapshot is about to be written", async () => {
+  newFolder();
+  const probes = [];
+  let failProbe = false;
+  const original = fs.writeFileSync;
+  fs.writeFileSync = function (file, ...rest) {
+    if (String(file).endsWith(".spent-write-test")) {
+      probes.push(file);
+      if (failProbe) throw Object.assign(new Error("read-only"), { code: "EACCES", path: file });
+    }
+    return original.call(this, file, ...rest);
+  };
+  try {
+    await engine.runPhoneSync();
+    probes.length = 0;
+    // Nothing changed: no snapshot to write, so no probe file in the Drive folder.
+    const idle = await engine.runPhoneSync();
+    assert.equal(idle.error, null);
+    assert.deepEqual(probes, []);
+
+    // A local change needs a snapshot: the probe runs first and reports a
+    // read-only folder before any snapshot is built.
+    failProbe = true;
+    db.prepare("UPDATE transactions SET needs_review = 1 WHERE id = ?").run(transactionIds[6]);
+    const failed = await engine.runPhoneSync();
+    assert.equal(probes.length, 1);
+    assert.equal(failed.error, "not_writable");
+  } finally {
+    fs.writeFileSync = original;
+  }
+  const ok = await engine.runPhoneSync();
+  assert.equal(ok.error, null);
 });
 
 test("folder error matching respects the path separator boundary", () => {

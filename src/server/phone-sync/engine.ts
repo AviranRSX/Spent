@@ -250,7 +250,8 @@ export async function runPhoneSync(): Promise<PhoneSyncStatus> {
 }
 
 async function syncPass(state: PhoneSyncState, folder: string | null): Promise<void> {
-  const check = checkFolder(folder);
+  // Read-only here; the write probe runs only before a snapshot write.
+  const check = checkFolder(folder, { probeWrite: false });
   if (!check.ok) return recordError(state, check.reason);
   const dir = folder as string;
   const passphrase = getPhoneSyncPassphrase();
@@ -265,6 +266,9 @@ async function syncPass(state: PhoneSyncState, folder: string | null): Promise<v
   const pending = changesBeforeSnapshot - engineWrites > state.baseline;
   let snapshot: { at: string; bytes: number } | null = null;
   if (applied > 0 || pending || !state.snapshotWrittenSinceStart) {
+    // Fails fast on a read-only folder before the costly build and encrypt.
+    const writable = checkFolder(dir);
+    if (!writable.ok) return recordError(state, writable.reason);
     const now = new Date();
     const plain = buildSnapshotDbBytes({ acks: getAcks(), now });
     const blob = await encryptPayload(plain, passphrase);

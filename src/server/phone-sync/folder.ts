@@ -14,8 +14,16 @@ export type FolderCheck =
   | { ok: true }
   | { ok: false; reason: "folder_unavailable" | "not_writable" };
 
-/** Checks that the folder exists and is writable. Never creates anything but a probe file inside it. */
-export function checkFolder(folder: string | null): FolderCheck {
+/**
+ * Checks that the folder exists and, unless `probeWrite` is false, that it is
+ * writable. Never creates anything but a probe file inside it. Drive for
+ * desktop uploads every file it sees, so skip the probe when nothing will be
+ * written.
+ */
+export function checkFolder(
+  folder: string | null,
+  { probeWrite = true }: { probeWrite?: boolean } = {}
+): FolderCheck {
   if (!folder) return { ok: false, reason: "folder_unavailable" };
   try {
     if (!fs.statSync(folder).isDirectory()) {
@@ -24,6 +32,7 @@ export function checkFolder(folder: string | null): FolderCheck {
   } catch {
     return { ok: false, reason: "folder_unavailable" };
   }
+  if (!probeWrite) return { ok: true };
   const probe = path.join(folder, WRITE_PROBE_FILE);
   try {
     fs.writeFileSync(probe, "");

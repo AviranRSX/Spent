@@ -67,7 +67,7 @@ const commands = {
       seen.add(key);
       candidates.push(row.id);
     }
-    return { ...seeded, candidates, dataDir };
+    return { ...seeded, candidates };
   },
   sync: () => engine.runPhoneSync(),
   status: () => engine.getPhoneSyncStatus(),
@@ -126,4 +126,4 @@ process.on("message", async ({ id, command, args }) => {
     process.send({ id, ok: false, error: error instanceof Error ? error.stack : String(error) });
   }
 });
-process.send({ ready: true });
+process.send({ ready: true, dataDir });

@@ -3,6 +3,10 @@
 // process (scripts/phone-sync-e2e-pc.mjs) because both sides keep their
 // database in globalThis._db; the phone runs here on sql.js. All data is
 // synthetic.
+//
+// The scenarios share one PC, one folder and the same phones, and build on
+// each other (device seqs, acks, the passphrase changed in 4). They must run
+// in order, as a whole file; do not run one alone with --test-name-pattern.
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -57,6 +61,34 @@ const child = fork(driver, [], {
   execArgv: ["--conditions", "react-server", "--experimental-transform-types", "--no-warnings"],
   stdio: ["ignore", "pipe", "pipe", "ipc"],
 });
+let pcDataDir = null;
+let exited = null;
+const childExit = new Promise((resolve) => child.once("exit", resolve));
+
+/** Stops the PC (killing it if it does not exit), then removes both temp dirs. */
+async function cleanup() {
+  if (!exited) {
+    await pc("stop").catch(() => undefined);
+    if (child.connected) child.disconnect();
+    const killer = setTimeout(() => child.kill(), 5_000);
+    await childExit;
+    clearTimeout(killer);
+  }
+  if (sqljsDb.isDatabaseLoaded()) sqljsDb.getDb().close();
+  for (const dir of [pcDataDir, dataDir]) {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// Registered before anything that can throw. A setup failure below runs
+// cleanup itself, because the test runner's uncaught-error path exits without
+// running test.after or "exit" listeners; the exit hook is a last resort so
+// the child never outlives this process.
+test.after(cleanup);
+process.on("exit", () => {
+  if (!exited) child.kill();
+});
+
 const pcLogs = [];
 for (const stream of [child.stdout, child.stderr]) {
   stream.setEncoding("utf8");
@@ -64,23 +96,45 @@ for (const stream of [child.stdout, child.stderr]) {
 }
 const pending = new Map();
 let nextCallId = 0;
+// A PC call that takes this long means the driver is stuck: fail, don't hang.
+const PC_CALL_TIMEOUT_MS = 120_000;
+const TEST_TIMEOUT = { timeout: 180_000 };
+
 const ready = new Promise((resolve, reject) => {
-  child.once("exit", (code) => reject(new Error(`PC driver exited (${code}): ${pcLogs.join("\n")}`)));
+  child.once("exit", (code, signal) => {
+    exited = new Error(`PC driver exited (${code ?? signal}): ${pcLogs.join("\n")}`);
+    reject(exited);
+    // Fail every call still waiting on the dead child.
+    for (const call of pending.values()) call.reject(exited);
+    pending.clear();
+  });
   child.on("message", (message) => {
-    if (message.ready) return resolve();
+    if (message.ready) {
+      pcDataDir = message.dataDir;
+      return resolve();
+    }
     const call = pending.get(message.id);
+    if (!call) return;
     pending.delete(message.id);
     if (message.ok) call.resolve(message.result);
     else call.reject(new Error(`PC ${call.command} failed: ${message.error}`));
   });
 });
-await ready;
 
 function pc(command, args) {
+  if (exited) return Promise.reject(exited);
   nextCallId += 1;
   const id = nextCallId;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject, command });
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`PC ${command} timed out after ${PC_CALL_TIMEOUT_MS} ms`));
+    }, PC_CALL_TIMEOUT_MS);
+    const settle = (fn) => (value) => {
+      clearTimeout(timer);
+      fn(value);
+    };
+    pending.set(id, { resolve: settle(resolve), reject: settle(reject), command });
     child.send({ id, command, args });
   });
 }
@@ -92,18 +146,16 @@ function takePcLogs() {
   return lines;
 }
 
-const seeded = await pc("init", { passphrase: PASS, folder });
+let seeded;
+try {
+  await ready;
+  seeded = await pc("init", { passphrase: PASS, folder });
+  assert.ok(seeded.candidates.length >= 7, `enough editable rows: ${seeded.candidates.length}`);
+} catch (error) {
+  await cleanup();
+  throw error;
+}
 const { workspaceId, categoryIds, candidates } = seeded;
-assert.ok(candidates.length >= 7, `enough editable rows: ${candidates.length}`);
-
-test.after(async () => {
-  await pc("stop").catch(() => undefined);
-  child.disconnect();
-  await new Promise((resolve) => child.once("exit", resolve));
-  if (sqljsDb.isDatabaseLoaded()) sqljsDb.getDb().close();
-  rmSync(seeded.dataDir, { recursive: true, force: true });
-  rmSync(dataDir, { recursive: true, force: true });
-});
 
 // ---------------------------------------------------------------- the phones
 
@@ -322,7 +374,7 @@ const phoneB = createPhone("Phone B", "b".repeat(32));
 
 // ---------------------------------------------------------------- scenarios
 
-test("1. PC snapshot loads on the phone and the numbers match", async () => {
+test("1. PC snapshot loads on the phone and the numbers match", TEST_TIMEOUT, async () => {
   const status = await pc("sync");
   assert.equal(status.error, null);
   assert.ok(existsSync(path.join(folder, SNAPSHOT_FILE)));
@@ -344,7 +396,7 @@ test("1. PC snapshot loads on the phone and the numbers match", async () => {
   assert.deepEqual(takePcLogs(), []);
 });
 
-test("2. offline edits reach the PC, are acked, and leave the outbox", async () => {
+test("2. offline edits reach the PC, are acked, and leave the outbox", TEST_TIMEOUT, async () => {
   const [t1, t2] = candidates;
   const [c1] = await targetsFor(t1);
   const [c2] = await targetsFor(t2);
@@ -402,7 +454,7 @@ test("2. offline edits reach the PC, are acked, and leave the outbox", async () 
   assert.deepEqual(takePcLogs(), []);
 });
 
-test("3. two phones: both edits applied, each acked on its own", async () => {
+test("3. two phones: both edits applied, each acked on its own", TEST_TIMEOUT, async () => {
   const tA = candidates[2];
   const tB = candidates[3];
   const [cA] = await targetsFor(tA);
@@ -438,7 +490,7 @@ test("3. two phones: both edits applied, each acked on its own", async () => {
   assert.deepEqual(takePcLogs(), []);
 });
 
-test("4. passphrase changed on the PC keeps the pending edit", async () => {
+test("4. passphrase changed on the PC keeps the pending edit", TEST_TIMEOUT, async () => {
   await phoneA.use();
   const t = candidates[4];
   const [c] = await targetsFor(t);
@@ -487,7 +539,7 @@ test("4. passphrase changed on the PC keeps the pending edit", async () => {
   assert.deepEqual(takePcLogs(), []);
 });
 
-test("5. PC folder unavailable: status error, nothing written, recovers", async () => {
+test("5. PC folder unavailable: status error, nothing written, recovers", TEST_TIMEOUT, async () => {
   const away = `${folder}-away`;
   const t = candidates[5];
   const [c] = await targetsFor(t);
@@ -526,14 +578,16 @@ test("5. PC folder unavailable: status error, nothing written, recovers", async 
   assert.deepEqual(takePcLogs(), []);
 });
 
-test("6. conflict: a later PC decision wins over the phone edit", async () => {
+test("6. conflict: a later PC decision wins over the phone edit", TEST_TIMEOUT, async () => {
   const t = candidates[6];
   const [phoneChoice, pcChoice] = await targetsFor(t);
 
   phoneA.drive.state.offline = true;
   await phoneA.recategorize(t, phoneChoice);
   assert.equal(phoneA.engine.getState().pendingCount, 1);
-  // The PC decision must be strictly later than the phone's edit time.
+  // The PC decision must be strictly later than the phone's edit time. Both
+  // are new Date().toISOString() (ms precision) on one machine clock, so a
+  // 5 ms gap makes the PC string compare greater.
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal((await pc("recategorize", { id: t, categoryId: pcChoice })).status, 200);
   const decidedOnPc = (await pc("row", { id: t })).category_decided_at;

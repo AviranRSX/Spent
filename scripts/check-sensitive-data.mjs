@@ -106,8 +106,16 @@ if (databases.length > 0) {
   for (const file of Database ? databases : []) {
     try {
       const db = new Database(file, { readonly: true, fileMustExist: true });
+      // The Demo workspace (npm run seed:demo) is synthetic and its script is
+      // tracked, so its rows would flag the script itself.
+      const hasDemoMarker = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workspace_settings'")
+        .get();
       db.prepare(
-        "SELECT account_number, identifier, description, memo, charged_amount, original_amount FROM transactions"
+        "SELECT account_number, identifier, description, memo, charged_amount, original_amount FROM transactions" +
+          (hasDemoMarker
+            ? " WHERE workspace_id NOT IN (SELECT workspace_id FROM workspace_settings WHERE key = 'demo_workspace' AND value = 'true')"
+            : "")
       ).all().forEach(addTransaction);
       db.close();
     } catch {

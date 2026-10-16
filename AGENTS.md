@@ -257,6 +257,7 @@ npm run lint
 npm run test:imports     # template detection, parsers, preview orchestration
 npm run test:logic       # categorization, review filter, analytics, setup logic
 npm run test:phone-sync  # phone sync: crypto, snapshot, change apply, router, handler parity, engines
+npm run seed:demo        # add or replace a "Demo" workspace with synthetic data (SPENT_DATA_DIR for a separate DB)
 npm run mobile:build     # phone static export into out-mobile/ (never touches .next/)
 npm run mobile:sync      # mobile:build plus cap sync android
 npm run mobile:apk       # mobile:sync plus a signed release APK (JDK 21, Android SDK, SPENT_KEYSTORE_* env vars)

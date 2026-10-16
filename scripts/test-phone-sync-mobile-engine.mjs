@@ -101,14 +101,43 @@ function fakeFs() {
   };
 }
 
+/** A promise plus its resolver, and a flag for "something is waiting on it". */
+function gate() {
+  let open;
+  const promise = new Promise((resolve) => {
+    open = resolve;
+  });
+  const g = { promise, open, reached: false };
+  g.wait = async () => {
+    g.reached = true;
+    await promise;
+  };
+  return g;
+}
+
+async function until(condition, label) {
+  for (let i = 0; i < 2000; i++) {
+    if (condition()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
 function fakeSecrets(initial = {}) {
   const map = new Map(Object.entries(initial));
+  const holds = new Map();
   return {
     map,
+    holds,
     async get(key) {
       return map.get(key) ?? null;
     },
     async set(key, value) {
+      const hold = holds.get(key);
+      if (hold) {
+        holds.delete(key);
+        await hold.wait();
+      }
       map.set(key, value);
     },
     async clearAll() {
@@ -120,7 +149,8 @@ function fakeSecrets(initial = {}) {
 function fakeDrive() {
   const calls = [];
   const uploads = [];
-  const state = { remote: null, md5: "md5-1", fail: null };
+  // holdUpload / holdDownload: a gate() the next call waits on (used once).
+  const state = { remote: null, md5: "md5-1", fail: null, holdUpload: null, holdDownload: null };
   return {
     calls,
     uploads,
@@ -139,11 +169,21 @@ function fakeDrive() {
     async download(fileId) {
       calls.push(`download:${fileId}`);
       if (state.fail) throw new DriveError(state.fail);
+      const hold = state.holdDownload;
+      if (hold) {
+        state.holdDownload = null;
+        await hold.wait();
+      }
       return state.remote;
     },
     async upsertFile(folderId, name, bytes) {
       calls.push(`upsertFile:${name}`);
       if (state.fail) throw new DriveError(state.fail);
+      const hold = state.holdUpload;
+      if (hold) {
+        state.holdUpload = null;
+        await hold.wait();
+      }
       uploads.push({ folderId, name, bytes });
     },
   };
@@ -189,6 +229,7 @@ async function harness({
   remotePassphrase = PASS,
   storedMd5,
   activeWorkspace = workspaceId,
+  loadDatabase,
 } = {}) {
   const disk = fakeFs();
   const files = createLocalFiles(async () => ({ fs: disk.fs, directory: "DATA" }));
@@ -204,7 +245,13 @@ async function harness({
         }
       : {}
   );
-  const store = createEncryptedOutboxStore({ files, getPassphrase: () => secrets.map.get("passphrase") ?? null });
+  // Like mobile-root.tsx: the store encrypts with the engine's session
+  // passphrase (PASS only while seeding, before the engine exists).
+  let engineRef = null;
+  const store = createEncryptedOutboxStore({
+    files,
+    getPassphrase: () => (engineRef ? engineRef.getPassphrase() : PASS),
+  });
   if (connected) {
     await files.writeSnapshotBlob(await encryptPayload(local ?? (await snapshotBytes()), PASS));
     if (outbox.length) await store.save(outbox);
@@ -220,7 +267,7 @@ async function harness({
     files,
     secrets,
     outbox: store,
-    loadDatabase: sqljsDb.loadDatabase,
+    loadDatabase: loadDatabase ?? sqljsDb.loadDatabase,
     inspectSnapshot,
     reapplyOutbox,
     invalidateAll: () => {
@@ -241,6 +288,7 @@ async function harness({
     clock,
     randomId: () => "0123456789abcdef0123456789abcdef",
   });
+  engineRef = engine;
   return { engine, drive, files, disk, secrets, store, clock, workspace, events };
 }
 
@@ -527,4 +575,103 @@ test("disconnect wipes local data and signs out", async () => {
   assert.equal(h.events.signOuts, 1);
   assert.equal(h.engine.getState().pendingCount, 0);
   assert.equal(await h.engine.boot(), "needs_onboarding");
+});
+
+test("a sync in flight across a new passphrase still re-uploads under the new one", async () => {
+  const h = await harness({ outbox: [change(1, categoryIds.Restaurants)], remotePassphrase: NEW_PASS });
+  const upload = gate();
+  h.drive.state.holdUpload = upload;
+  assert.equal(await h.engine.boot(), "ready");
+  // The boot sync is uploading under the old passphrase when the new one is entered.
+  await until(() => upload.reached, "the boot sync's upload");
+  const submitted = h.engine.submitPassphrase(NEW_PASS);
+  await until(() => h.secrets.map.get("passphrase") === NEW_PASS, "the new passphrase");
+  await settle();
+  upload.open();
+  assert.equal(await submitted, "ok");
+  await h.engine.sync();
+
+  const last = h.drive.uploads.at(-1);
+  const file = decodeChangeFile(await decryptPayload(last.bytes, NEW_PASS));
+  assert.deepEqual(file.changes.map((c) => c.seq), [1]);
+  assert.equal(h.engine.getState().error, null);
+});
+
+test("disconnect during a sync leaves nothing behind", async () => {
+  const h = await harness({ outbox: [change(1, categoryIds.Restaurants)], storedMd5: "md5-0" });
+  const download = gate();
+  h.drive.state.holdDownload = download;
+  await h.engine.boot();
+  await until(() => download.reached, "the boot sync's download");
+  const done = h.engine.disconnect();
+  await settle();
+  download.open();
+  await done;
+  // Resolves only after any run still in flight has finished.
+  await h.engine.sync();
+
+  assert.deepEqual([...h.disk.files.keys()], []);
+  assert.deepEqual([...h.secrets.map.keys()], []);
+  assert.equal(h.engine.hasData(), false);
+  assert.deepEqual(h.engine.getState(), {
+    state: "idle",
+    lastSyncedAt: null,
+    pendingCount: 0,
+    error: null,
+  });
+});
+
+test("a save between re-key and storing the new passphrase uses the new key", async () => {
+  const h = await harness({ outbox: [change(1, categoryIds.Restaurants)], remotePassphrase: NEW_PASS });
+  await h.engine.boot();
+  await h.engine.sync();
+  assert.equal(h.engine.getState().error, "bad_passphrase");
+
+  const stored = gate();
+  h.secrets.holds.set("passphrase", stored);
+  const submitted = h.engine.submitPassphrase(NEW_PASS);
+  await until(() => stored.reached, "the passphrase write");
+  // The outbox is re-keyed but the secret not yet written: a local edit lands now.
+  await h.store.save([change(1, categoryIds.Restaurants), change(2, categoryIds.Groceries)]);
+  const plain = await decryptPayload(await h.files.readOutboxBlob(), NEW_PASS);
+  assert.equal(JSON.parse(new TextDecoder().decode(plain)).changes.length, 2);
+
+  stored.open();
+  assert.equal(await submitted, "ok");
+  h.store.reset();
+  assert.deepEqual((await h.store.load()).map((c) => c.seq), [1, 2]);
+});
+
+test("a snapshot that fails to load leaves the local blob untouched", async () => {
+  const state = { failNext: false };
+  const h = await harness({
+    storedMd5: "md5-1",
+    loadDatabase: async (bytes) => {
+      if (state.failNext) {
+        state.failNext = false;
+        throw new Error("could not open");
+      }
+      return sqljsDb.loadDatabase(bytes);
+    },
+  });
+  await h.engine.boot();
+  await h.engine.sync();
+  const blobBefore = h.disk.files.get("snapshot.spent.enc");
+  const dbBefore = sqljsDb.getDb();
+
+  h.drive.state.remote = await encryptPayload(
+    await snapshotBytes({
+      mutate: (db) =>
+        db.prepare("UPDATE workspaces SET name = 'Never Loaded' WHERE id = ?").run(workspaceId),
+    }),
+    PASS
+  );
+  h.drive.state.md5 = "md5-2";
+  state.failNext = true;
+  await h.engine.sync();
+
+  assert.equal(h.engine.getState().error, "sync_failed");
+  assert.equal(h.disk.files.get("snapshot.spent.enc"), blobBefore);
+  assert.equal(sqljsDb.getDb(), dbBefore);
+  assert.equal(h.secrets.map.get("snapshotMd5"), "md5-1");
 });

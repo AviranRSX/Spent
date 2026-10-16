@@ -95,11 +95,14 @@ export function createEncryptedOutboxStore(opts: {
   let cache: PhoneChange[] | null = null;
   let locked = false;
   let corrupted = false;
+  // Set by rekey inside the save queue, so every save after it uses the new
+  // key even before the caller has stored the new passphrase.
+  let rekeyedTo: string | null = null;
   // Saves run one at a time, in call order.
   let queue: Promise<unknown> = Promise.resolve();
 
   function passphrase(): string {
-    const value = opts.getPassphrase();
+    const value = rekeyedTo ?? opts.getPassphrase();
     if (!value) throw new OutboxLockedError();
     return value;
   }
@@ -162,6 +165,7 @@ export function createEncryptedOutboxStore(opts: {
         const blob = await opts.files.readOutboxBlob();
         if (!blob) {
           cache = [];
+          rekeyedTo = nextPassphrase;
           locked = false;
           return;
         }
@@ -186,6 +190,7 @@ export function createEncryptedOutboxStore(opts: {
           throw new PhoneSyncCryptoError("bad_passphrase", "outbox opens with no known passphrase");
         }
         await write(changes, nextPassphrase);
+        rekeyedTo = nextPassphrase;
         locked = false;
       });
     },
@@ -197,6 +202,7 @@ export function createEncryptedOutboxStore(opts: {
     },
     reset() {
       cache = null;
+      rekeyedTo = null;
       locked = false;
       corrupted = false;
     },

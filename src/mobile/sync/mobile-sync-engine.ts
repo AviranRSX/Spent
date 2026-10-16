@@ -104,6 +104,14 @@ class SyncFailure extends Error {
   }
 }
 
+/** Thrown inside a sync run whose session was replaced; the run then stops quietly. */
+class StaleRun extends Error {
+  constructor() {
+    super("stale_run");
+    this.name = "StaleRun";
+  }
+}
+
 export function errorCode(error: unknown): MobileSyncError {
   if (error instanceof SyncFailure) return error.code;
   if (error instanceof PhoneSyncCryptoError) {
@@ -228,24 +236,36 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
     }
   }
 
-  async function applyDownload(download: Download, current: Session): Promise<void> {
-    await deps.files.writeSnapshotBlob(download.blob);
+  // Every side effect below calls `guard` first: once the session changed
+  // (new passphrase, Disconnect) a run that started before is a no-op.
+  async function applyDownload(
+    download: Download,
+    current: Session,
+    guard: () => void
+  ): Promise<void> {
+    guard();
+    // Load first: if the bytes don't open, the blob on disk stays the old one.
     await deps.loadDatabase(download.plain);
     loaded = true;
+    guard();
+    await deps.files.writeSnapshotBlob(download.blob);
+    guard();
     adoptSnapshotInfo(download.info, current);
     await replayOutbox(true);
     if (download.md5) {
+      guard();
       lastMd5 = download.md5;
       await deps.secrets.set("snapshotMd5", download.md5);
     }
     deps.invalidateAll();
   }
 
-  async function uploadOutbox(current: Session): Promise<void> {
+  async function uploadOutbox(current: Session, guard: () => void): Promise<void> {
     if (deps.outbox.isLocked()) return;
     const pending = pruneAcked(await deps.outbox.load(), ack);
     if (pending.length === 0) return;
-    // Skip re-uploading the same entries; reset whenever the passphrase changes.
+    // Skip re-uploading the same entries. A new passphrase clears
+    // lastUploaded, and a run from an older session never sets it.
     const signature = JSON.stringify(pending);
     if (signature === lastUploaded) return;
     const plain = encodeChangeFile({
@@ -254,21 +274,23 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
       deviceName: current.deviceName,
       changes: pending,
     });
-    await deps.drive.upsertFile(
-      current.folderId,
-      changeFileName(current.deviceId),
-      await encryptPayload(plain, current.passphrase)
-    );
-    lastUploaded = signature;
+    const encrypted = await encryptPayload(plain, current.passphrase);
+    guard();
+    await deps.drive.upsertFile(current.folderId, changeFileName(current.deviceId), encrypted);
+    if (session === current) lastUploaded = signature;
   }
 
   async function runSync(): Promise<void> {
     const current = session;
     if (!current) return;
+    const guard = () => {
+      if (session !== current) throw new StaleRun();
+    };
     setState({ state: "syncing" });
     let error: MobileSyncError | null = null;
     try {
-      await uploadOutbox(current);
+      await uploadOutbox(current, guard);
+      guard();
       let download = prefetched;
       prefetched = null;
       if (!download) {
@@ -282,25 +304,38 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
           );
         }
       }
-      if (download) await applyDownload(download, current);
+      if (download) await applyDownload(download, current, guard);
       if (deps.outbox.isLocked()) error = "bad_passphrase";
       else {
         // Shown through one full sync, then cleared.
         error = notice;
         notice = null;
       }
+      guard();
       const syncedAt = deps.now().toISOString();
       setState({ lastSyncedAt: syncedAt });
       await deps.secrets.set("lastSyncedAt", syncedAt).catch(() => undefined);
     } catch (failure) {
+      // A stale run leaves the state to whoever replaced the session.
+      if (failure instanceof StaleRun || session !== current) return;
       error = errorCode(failure);
     }
+    if (session !== current) return;
     // Clears an earlier error (such as a set-aside outbox) only on success.
     setState({ state: "idle", error });
     await refreshPending();
   }
 
-  const scheduler = createSyncScheduler({ run: runSync, clock: deps.clock });
+  /** The run in progress, so Disconnect can wait for it to settle. */
+  let inFlight: Promise<void> | null = null;
+  const scheduler = createSyncScheduler({
+    run: () => {
+      const run = runSync();
+      inFlight = run;
+      return run;
+    },
+    clock: deps.clock,
+  });
 
   async function readSession(): Promise<Session | null> {
     const [passphrase, deviceId, deviceName, folderId] = await Promise.all([
@@ -374,7 +409,9 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
       }
     }
 
+    if (session !== current) return "signed_out";
     try {
+      // Also switches the store's key, in the same queue as saves.
       await deps.outbox.rekey([current.passphrase, passphrase], passphrase);
     } catch {
       // Opens with neither passphrase: it stays on disk, locked, and the
@@ -430,7 +467,12 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
 
   async function disconnect(): Promise<void> {
     scheduler.cancel();
+    // Makes any running sync stale, then waits for it (and queued follow-ups,
+    // which return at once without a session) before wiping.
     session = null;
+    while (scheduler.isRunning()) {
+      await (inFlight ?? Promise.resolve()).catch(() => undefined);
+    }
     await deps.files.wipeLocalData();
     await deps.secrets.clearAll();
     await deps.signOut();

@@ -40,7 +40,15 @@ export function buildSnapshotDbBytes(opts: SnapshotOptions): Uint8Array {
 
     const copy = new Database(file);
     try {
-      copy.prepare("DELETE FROM bank_credentials").run();
+      // Blank the secret columns instead of deleting rows: transactions and
+      // sync_runs reference bank_credentials(id) with ON DELETE SET NULL, so
+      // deleting would null their credential_id and break filters and the
+      // integrations list on the phone.
+      copy
+        .prepare(
+          "UPDATE bank_credentials SET credentials_encrypted = X'', iv = X'', auth_tag = X''"
+        )
+        .run();
       for (const table of ["settings", "workspace_settings"]) {
         const del = copy.prepare(`DELETE FROM ${table} WHERE key LIKE ?`);
         for (const pattern of SNAPSHOT_SECRET_SETTING_PATTERNS) del.run(pattern);

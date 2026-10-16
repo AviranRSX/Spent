@@ -50,6 +50,11 @@ db.prepare(
   `INSERT INTO bank_credentials (workspace_id, provider, label, credentials_encrypted, iv, auth_tag)
    VALUES (?, 'hapoalim', 'Synthetic', ?, ?, ?)`
 ).run(workspaceId, Buffer.from(MARKERS[4]), Buffer.from("iv-bytes"), Buffer.from("tag-bytes"));
+const credentialId = db.prepare("SELECT id FROM bank_credentials").get().id;
+const txId = db.prepare("SELECT id FROM transactions WHERE workspace_id = ? LIMIT 1").get(workspaceId).id;
+db.prepare("UPDATE transactions SET credential_id = ? WHERE id = ?").run(credentialId, txId);
+const syncRunId = db.prepare("SELECT id FROM sync_runs WHERE workspace_id = ? LIMIT 1").get(workspaceId).id;
+db.prepare("UPDATE sync_runs SET credential_id = ? WHERE id = ?").run(credentialId, syncRunId);
 
 function openBytes(bytes) {
   const dir = mkdtempSync(path.join(dataDir, "open-"));
@@ -79,7 +84,14 @@ test("strips secrets", () => {
   const bytes = buildSnapshotDbBytes({ acks: {} });
   const snap = openBytes(bytes);
   try {
-    assert.equal(count(snap, "bank_credentials"), 0);
+    const cred = snap.prepare("SELECT * FROM bank_credentials").get();
+    assert.equal(cred.id, credentialId);
+    assert.equal(cred.provider, "hapoalim");
+    assert.equal(cred.label, "Synthetic");
+    for (const col of ["credentials_encrypted", "iv", "auth_tag"]) {
+      assert.equal(cred[col].length, 0, col);
+    }
+    assert.equal(count(snap, "bank_credentials"), 1);
     const keys = snap.prepare("SELECT key FROM settings").all().map((r) => r.key);
     for (const k of Object.keys(secretSettings)) assert.ok(!keys.includes(k), k);
     assert.equal(
@@ -99,6 +111,22 @@ test("keeps data", () => {
     for (const t of ["transactions", "categories", "budgets", "trips", "workspaces"]) {
       assert.equal(count(snap, t), count(db, t), t);
     }
+  } finally {
+    snap.close();
+  }
+});
+
+test("keeps credential_id links on transactions and sync_runs", () => {
+  const snap = openBytes(buildSnapshotDbBytes({ acks: {} }));
+  try {
+    assert.equal(
+      snap.prepare("SELECT credential_id AS c FROM transactions WHERE id = ?").get(txId).c,
+      credentialId
+    );
+    assert.equal(
+      snap.prepare("SELECT credential_id AS c FROM sync_runs WHERE id = ?").get(syncRunId).c,
+      credentialId
+    );
   } finally {
     snap.close();
   }
@@ -151,6 +179,10 @@ test("live db untouched", () => {
     2
   );
   assert.equal(count(db, "bank_credentials"), 1);
+  assert.equal(
+    db.prepare("SELECT credentials_encrypted AS c FROM bank_credentials").get().c.toString(),
+    MARKERS[4]
+  );
   assert.equal(
     db.prepare("SELECT name FROM sqlite_master WHERE name = 'phone_sync_meta'").get(),
     undefined

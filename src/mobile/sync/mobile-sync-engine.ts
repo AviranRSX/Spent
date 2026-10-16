@@ -389,7 +389,19 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
     return "ready";
   }
 
-  async function submitPassphrase(passphrase: string): Promise<"ok" | MobileSyncError> {
+  /** A passphrase submit in progress, so Disconnect can wait for it to settle. */
+  let submitting: Promise<unknown> | null = null;
+
+  function submitPassphrase(passphrase: string): Promise<"ok" | MobileSyncError> {
+    const run = runSubmit(passphrase);
+    submitting = run;
+    return run;
+  }
+
+  // Each await is followed by a session check: a submit superseded by
+  // Disconnect stops before its next side effect, and Disconnect waits for it
+  // before wiping, so anything it already wrote is wiped too.
+  async function runSubmit(passphrase: string): Promise<"ok" | MobileSyncError> {
     const current = session;
     if (!current) return "signed_out";
     let download: Download | null = null;
@@ -417,13 +429,17 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
       // Opens with neither passphrase: it stays on disk, locked, and the
       // error stays visible. Never discard it.
     }
+    if (session !== current) return "signed_out";
     await deps.secrets.set("passphrase", passphrase);
-    session = { ...current, passphrase };
+    if (session !== current) return "signed_out";
+    const updated: Session = { ...current, passphrase };
+    session = updated;
     lastUploaded = null;
 
     if (!download && !loaded) {
-      const local = await loadLocal(session);
+      const local = await loadLocal(updated);
       if (local === "bad_passphrase") return "bad_passphrase";
+      if (session !== updated) return "signed_out";
     }
     prefetched = download;
     await scheduler.syncNow();
@@ -470,6 +486,10 @@ export function createMobileSyncEngine(deps: MobileSyncDeps): MobileSyncEngine {
     // Makes any running sync stale, then waits for it (and queued follow-ups,
     // which return at once without a session) before wiping.
     session = null;
+    // The submit may still write the outbox or the passphrase secret; let it
+    // finish (it stops at its next session check) so the wipe below removes it.
+    await (submitting ?? Promise.resolve()).catch(() => undefined);
+    submitting = null;
     while (scheduler.isRunning()) {
       await (inFlight ?? Promise.resolve()).catch(() => undefined);
     }

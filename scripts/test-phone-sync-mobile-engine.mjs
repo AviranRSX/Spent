@@ -642,6 +642,32 @@ test("a save between re-key and storing the new passphrase uses the new key", as
   assert.deepEqual((await h.store.load()).map((c) => c.seq), [1, 2]);
 });
 
+test("disconnect during a passphrase submit leaves nothing behind", async () => {
+  const h = await harness({ outbox: [change(1, categoryIds.Restaurants)], remotePassphrase: NEW_PASS });
+  await h.engine.boot();
+  await h.engine.sync();
+  assert.equal(h.engine.getState().error, "bad_passphrase");
+
+  // Hold the submit after the outbox re-key, at the passphrase secret write.
+  const stored = gate();
+  h.secrets.holds.set("passphrase", stored);
+  const submitted = h.engine.submitPassphrase(NEW_PASS);
+  await until(() => stored.reached, "the passphrase write");
+  const callsBefore = h.drive.calls.length;
+  const done = h.engine.disconnect();
+  await settle();
+  stored.open();
+  assert.equal(await submitted, "signed_out");
+  await done;
+  await h.engine.sync();
+
+  assert.deepEqual([...h.disk.files.keys()], [], "no outbox or snapshot blob");
+  assert.deepEqual([...h.secrets.map.keys()], [], "no passphrase secret");
+  assert.equal(h.engine.getPassphrase(), null, "no session");
+  assert.equal(h.drive.calls.length, callsBefore, "no new sync run");
+  assert.equal(h.engine.hasData(), false);
+});
+
 test("a snapshot that fails to load leaves the local blob untouched", async () => {
   const state = { failNext: false };
   const h = await harness({

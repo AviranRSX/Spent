@@ -1115,6 +1115,8 @@ interface TransactionContext {
   categoryId: number | null;
   categorySource: "ai" | "user" | null;
   kind: "expense" | "income" | "transfer";
+  dedupHash: string;
+  categoryDecidedAt: string | null;
 }
 
 export function getTransactionContext(
@@ -1124,11 +1126,25 @@ export function getTransactionContext(
   const row = getDb()
     .prepare(
       `SELECT id, description, category_id as categoryId,
-              category_source as categorySource, kind
+              category_source as categorySource, kind,
+              dedup_hash as dedupHash, category_decided_at as categoryDecidedAt
        FROM transactions WHERE workspace_id = ? AND id = ?`
     )
     .get(workspaceId, id) as TransactionContext | undefined;
   return row ?? null;
+}
+
+export function setCategoryDecidedAt(
+  workspaceId: number,
+  id: number,
+  at: string
+): void {
+  getDb()
+    .prepare(
+      `UPDATE transactions SET category_decided_at = ?
+       WHERE workspace_id = ? AND id = ?`
+    )
+    .run(at, workspaceId, id);
 }
 
 export function batchSetNeedsReview(

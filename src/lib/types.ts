@@ -803,3 +803,15 @@ export interface ExcludedMerchant {
   merchantKey: string;
   createdAt: string;
 }
+
+export interface PhoneSyncDevice {
+  deviceId: string;
+  deviceName: string;
+  lastAppliedSeq: number;
+  appliedCount: number;
+  skippedNewerCount: number;
+  skippedMismatchCount: number;
+  lastFileMtimeMs: number | null;
+  lastSeenAt: string | null;
+  lastError: string | null;
+}

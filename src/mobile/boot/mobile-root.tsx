@@ -19,7 +19,7 @@ import { setActiveWorkspaceId, getActiveWorkspaceIdSync } from "@/lib/workspace-
 import { loadDatabase } from "@/mobile/db/sqljs-db";
 import { DriveClient } from "@/mobile/drive/drive-client";
 import { getAccessToken, signIn, signOut } from "@/mobile/drive/google-auth";
-import { configureLocalWrites, reapplyOutbox } from "@/mobile/local-writes";
+import { configureLocalWrites, reapplyOutbox, type LastSeqStore } from "@/mobile/local-writes";
 import { handleMobileRequest } from "@/mobile/router";
 import * as localFiles from "@/mobile/storage/local-files";
 import { createEncryptedOutboxStore, type EncryptedOutboxStore } from "@/mobile/storage/outbox-store";
@@ -42,11 +42,21 @@ const MESSAGES: Record<Locale, Record<string, unknown>> = { en, he };
 let queryClient: QueryClient | null = null;
 let started = false;
 
+// Kept in secure storage so it outlives an outbox that had to be set aside.
+const lastSeq: LastSeqStore = {
+  async get() {
+    const value = Number(await getSecret("lastSeq"));
+    return Number.isInteger(value) && value > 0 ? value : 0;
+  },
+  set: (seq) => setSecret("lastSeq", String(seq)),
+};
+
 function wireLocalWrites(outbox: EncryptedOutboxStore, engine: MobileSyncEngine) {
   configureLocalWrites({
     outbox,
     getAck: () => engine.getAck(),
     onChange: () => engine.notifyChange(),
+    lastSeq,
   });
 }
 

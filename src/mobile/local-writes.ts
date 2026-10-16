@@ -4,10 +4,22 @@ import { nextSeq, pruneAcked, sortForApply } from "@/lib/phone-sync/outbox";
 import { changeSkipReason, type PhoneChange } from "@/lib/phone-sync/changes";
 import type { OutboxStore } from "./storage/outbox-store";
 
+/** The highest seq ever handed out on this install, kept outside the outbox. */
+export interface LastSeqStore {
+  get(): Promise<number>;
+  set(seq: number): Promise<void>;
+}
+
 interface LocalWritesConfig {
   outbox: OutboxStore;
   getAck(): number;
   onChange(): void;
+  /**
+   * Survives an outbox that is set aside as unreadable. Without it, the next
+   * edit would reuse a seq the PC may already have applied, and the PC would
+   * drop it as already applied.
+   */
+  lastSeq?: LastSeqStore;
 }
 
 let config: LocalWritesConfig | null = null;
@@ -77,8 +89,12 @@ async function record(
 
   try {
     const existing = pruneAcked(await loadCache(current), current.getAck());
+    const floor = Math.max(current.getAck(), (await current.lastSeq?.get()) ?? 0);
+    const seq = nextSeq(existing, floor);
+    // Stored before the outbox, so a seq that reached the outbox is never reused.
+    await current.lastSeq?.set(seq);
     const change: PhoneChange = {
-      seq: nextSeq(existing, current.getAck()),
+      seq,
       workspaceId,
       transactionId,
       dedupHash: context.dedupHash,

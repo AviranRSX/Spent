@@ -49,10 +49,11 @@ function rowOf(id) {
     .get(id);
 }
 
-function setup({ ack = 0, store = createMemoryOutboxStore() } = {}) {
+function setup({ ack = 0, store = createMemoryOutboxStore(), lastSeq } = {}) {
   const state = { changes: 0, ack };
   writes.configureLocalWrites({
     outbox: store,
+    lastSeq,
     getAck: () => state.ack,
     onChange: () => {
       state.changes += 1;
@@ -153,6 +154,28 @@ test("seq continues after ack", async () => {
   await patch(reviewTxId, { approve: true });
   const saved = await store.load();
   assert.deepEqual(saved.map((c) => c.seq), [6, 7]);
+});
+
+test("seq is never reused after an unreadable outbox is set aside", async () => {
+  await sqljsDb.loadDatabase(bytes());
+  let high = 0;
+  const lastSeq = {
+    get: async () => high,
+    set: async (seq) => {
+      high = seq;
+    },
+  };
+  setup({ lastSeq });
+  await put(txId, { categoryId: categoryIds.Restaurants });
+  await put(txId, { categoryId: categoryIds.Groceries });
+  assert.equal(high, 2);
+  // The PC may already hold seq 1 and 2 from the uploaded change file, while
+  // the phone's ack is still 0. The outbox is lost and replaced by an empty one.
+  const fresh = createMemoryOutboxStore();
+  setup({ store: fresh, lastSeq });
+  await put(txId, { categoryId: categoryIds.Restaurants });
+  assert.deepEqual((await fresh.load()).map((c) => c.seq), [3]);
+  assert.equal(high, 3);
 });
 
 test("reapply after fresh snapshot", async () => {

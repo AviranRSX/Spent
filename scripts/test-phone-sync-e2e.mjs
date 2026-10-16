@@ -275,6 +275,11 @@ function createPhone(name, deviceId) {
         outbox,
         getAck: () => engine.getAck(),
         onChange: () => engine.notifyChange(),
+        // Like mobile-root: the seq high-water lives with the secrets.
+        lastSeq: {
+          get: async () => Number(secrets.get("lastSeq") ?? 0),
+          set: async (seq) => void secrets.set("lastSeq", String(seq)),
+        },
       });
       active = phone;
     },

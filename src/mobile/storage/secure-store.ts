@@ -3,7 +3,7 @@
 // imported lazily so desktop builds and node tests never load it.
 import type { SecureStoragePluginPlugin } from "capacitor-secure-storage-plugin";
 
-// snapshotMd5 and lastSyncedAt are not secret, but they describe the local
+// snapshotMd5, lastSyncedAt and lastSeq are not secret, but they describe the local
 // copy, so they live here and Disconnect clears them with the rest.
 export type SecretKey =
   | "passphrase"
@@ -12,7 +12,8 @@ export type SecretKey =
   | "folderId"
   | "folderName"
   | "snapshotMd5"
-  | "lastSyncedAt";
+  | "lastSyncedAt"
+  | "lastSeq";
 
 const SECRET_KEYS: SecretKey[] = [
   "passphrase",
@@ -22,6 +23,7 @@ const SECRET_KEYS: SecretKey[] = [
   "folderName",
   "snapshotMd5",
   "lastSyncedAt",
+  "lastSeq",
 ];
 const PREFIX = "spent.";
 

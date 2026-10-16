@@ -1,6 +1,7 @@
 import "server-only";
 
 import fs from "node:fs";
+import path from "node:path";
 import { getDb } from "@/server/db";
 import {
   deleteGlobalSetting,
@@ -38,7 +39,14 @@ const KNOWN_ERRORS: readonly PhoneSyncError[] = [
   "no_passphrase",
   "bad_passphrase",
   "bad_format",
+  "sync_failed",
 ];
+
+function isFsErrorOnPath(err: unknown, folder: string | null): boolean {
+  const errPath = (err as NodeJS.ErrnoException | null)?.path;
+  if (!folder || typeof errPath !== "string") return false;
+  return path.resolve(errPath).toLowerCase().startsWith(path.resolve(folder).toLowerCase());
+}
 
 interface PhoneSyncState {
   scheduler: SyncScheduler | null;
@@ -169,6 +177,15 @@ export async function runPhoneSync(): Promise<PhoneSyncStatus> {
   state.running = true;
   try {
     await syncPass(state, config.folder);
+  } catch (err) {
+    // Unexpected failures still become a stored error, so the status shows it
+    // and the change-file poll retries.
+    const folderError = isFsErrorOnPath(err, config.folder);
+    console.error(
+      "[phone-sync] sync failed:",
+      folderError ? (err as NodeJS.ErrnoException).code : (err as Error).message
+    );
+    recordError(state, folderError ? "folder_unavailable" : "sync_failed");
   } finally {
     state.running = false;
   }

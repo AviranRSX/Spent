@@ -821,7 +821,8 @@ export type PhoneSyncError =
   | "not_writable"
   | "no_passphrase"
   | "bad_passphrase"
-  | "bad_format";
+  | "bad_format"
+  | "sync_failed";
 
 export interface PhoneSyncStatus {
   enabled: boolean;

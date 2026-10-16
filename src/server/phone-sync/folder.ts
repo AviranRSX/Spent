@@ -30,7 +30,11 @@ export function checkFolder(folder: string | null): FolderCheck {
     fs.unlinkSync(probe);
     return { ok: true };
   } catch {
-    fs.rmSync(probe, { force: true });
+    try {
+      fs.rmSync(probe, { force: true });
+    } catch {
+      // Best effort: the folder is already reported as not writable.
+    }
     return { ok: false, reason: "not_writable" };
   }
 }

@@ -84,9 +84,15 @@ export function getPhoneSyncPassphrase(): string | null {
   const iv = getGlobalSetting(PASSPHRASE_KEYS.iv);
   const authTag = getGlobalSetting(PASSPHRASE_KEYS.authTag);
   if (!encrypted || !iv || !authTag) return null;
-  return decrypt({
-    encrypted: Buffer.from(encrypted, "hex"),
-    iv: Buffer.from(iv, "hex"),
-    authTag: Buffer.from(authTag, "hex"),
-  });
+  try {
+    return decrypt({
+      encrypted: Buffer.from(encrypted, "hex"),
+      iv: Buffer.from(iv, "hex"),
+      authTag: Buffer.from(authTag, "hex"),
+    });
+  } catch {
+    // Undecryptable (for example the local encryption key was regenerated):
+    // treat it as unset so the status asks for the passphrase again.
+    return null;
+  }
 }

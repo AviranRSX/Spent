@@ -201,6 +201,53 @@ test("no passphrase is a status error, not a throw", async () => {
   }
 });
 
+test("undecryptable stored passphrase is no_passphrase", async () => {
+  newFolder();
+  const key = "phone_sync_passphrase_encrypted";
+  const saved = db.prepare("SELECT value FROM settings WHERE key = ?").get(key).value;
+  db.prepare("UPDATE settings SET value = ? WHERE key = ?").run("00ff00ff", key);
+  try {
+    assert.equal(settings.getPhoneSyncPassphrase(), null);
+    const status = await engine.runPhoneSync();
+    assert.equal(status.state, "error");
+    assert.equal(status.error, "no_passphrase");
+  } finally {
+    db.prepare("UPDATE settings SET value = ? WHERE key = ?").run(saved, key);
+  }
+});
+
+test("unexpected failure inside the pass is a status error, cleared by the next sync", async () => {
+  const folder = newFolder();
+  await engine.runPhoneSync();
+  // A local change makes the next pass build a snapshot, and a missing
+  // os.tmpdir() makes buildSnapshotDbBytes throw.
+  db.prepare("UPDATE transactions SET needs_review = 1 WHERE id = ?").run(transactionIds[4]);
+  const missingTmp = path.join(dataDir, "no-such-tmp");
+  process.env.TMPDIR = process.env.TEMP = process.env.TMP = missingTmp;
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args.join(" "));
+  let failed;
+  try {
+    failed = await engine.runPhoneSync();
+  } finally {
+    console.error = originalError;
+    process.env.TMPDIR = process.env.TEMP = process.env.TMP = tmpDir;
+  }
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /^\[phone-sync\] sync failed:/);
+  assert.equal(failed.state, "error");
+  assert.equal(failed.error, "sync_failed");
+
+  const before = failed.lastSnapshotAt;
+  const ok = await engine.runPhoneSync();
+  assert.equal(ok.state, "idle");
+  assert.equal(ok.error, null);
+  // The local change stayed pending through the failure.
+  assert.notEqual(ok.lastSnapshotAt, before);
+  assert.ok(existsSync(path.join(folder, SNAPSHOT_FILE)));
+});
+
 test("passphrase min length", () => {
   assert.throws(() => settings.setPhoneSyncPassphrase("a".repeat(11)), /at least 12/);
   assert.equal(settings.getPhoneSyncPassphrase(), PASSPHRASE);

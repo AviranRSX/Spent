@@ -40,6 +40,8 @@ The current app flow is file-first. Export XLSX files from supported Israeli ins
 
 The trade-off is honest: you self-host, keep the database on your machine, and choose when to import files. In return you get a fast, polished, offline-friendly dashboard that never phones home except to the AI provider you configure.
 
+Want it on your phone too? The Android companion is opt-in and off by default. When you turn it on, Spent only writes a file encrypted with your passphrase into a folder of your own Google Drive, and the phone reads it from there.
+
 ## Features
 
 <table>
@@ -108,6 +110,14 @@ When you correct a category, Spent remembers the merchant so future matching tra
 
 ### 🌐 English and Hebrew (RTL)
 Toggle between English (default) and עברית from **Settings → Appearance**. Hebrew flips the app to right-to-left with translated UI, bank names, predefined categories, currency, and date formatting. Powered by [`next-intl`](https://next-intl.dev/). Add another language by creating a locale file under [`src/i18n/messages/`](src/i18n/messages/).
+
+</td>
+</tr>
+<tr>
+<td colspan="3" valign="top">
+
+### 📱 Android companion
+Opt-in and off by default. Browse Home, Budget, Transactions, Credit card, and Trips on your phone, and fix categories or approve reviews on the go. The PC writes a passphrase-encrypted snapshot to a folder in your own Google Drive, and phone edits come back the same way. You build and sideload the APK yourself. See the [phone app guide](docs/phone-app.md).
 
 </td>
 </tr>
@@ -336,6 +346,7 @@ To wipe all local app data, delete `data/`.
 | File import | XLSX files are parsed in memory and committed only after preview |
 | Bundle integrity | Native and scraper packages are pinned in `package-lock.json` |
 | Browser hardening | Strict CSP, `X-Frame-Options: DENY`, and a restrictive `Permissions-Policy` |
+| Phone sync | Opt-in and off by default. Only files encrypted with your passphrase (AES-256-GCM, PBKDF2 at 600,000 iterations) go to your own Google Drive, without bank logins or API keys. The PC makes no new network connections |
 
 Turn on full-disk encryption with FileVault, BitLocker, or LUKS. The encryption key file sits next to the database, so disk-level protection matters if the laptop is lost.
 
@@ -345,6 +356,7 @@ Full threat model and responsible-disclosure policy: [SECURITY.md](SECURITY.md).
 
 - `data/spent.db` - transactions, categories, budgets, settings, workspaces, import metadata
 - `data/.encryption-key` - 32-byte AES key, mode `0600`
+- The Google Drive folder you choose in **Settings > Phone sync** - encrypted snapshot and phone change files, only when phone sync is on
 - `~/Library/Logs/Spent/` on macOS, `~/.local/state/spent/log/` on Linux - service logs
 
 Back up `data/` like any other folder. To migrate to a new machine, copy `data/` over and run `npm run service:install`.
@@ -430,7 +442,7 @@ To reset state, delete `data/spent.db*` and `data/.encryption-key`.
 - [ ] CSV / OFX export
 - [ ] Custom user-defined categories
 - [ ] Re-enable and harden scraper sync behind explicit user choice
-- [ ] Mobile companion (Phase 2)
+- [x] Android companion ([install guide](docs/phone-app.md))
 - [ ] Multiple workspaces in the menu bar / tray app
 
 ## Contributing

@@ -118,6 +118,7 @@ Spent does not track investments themselves (balances, returns, portfolios).
 - Before changing Next.js code, read the relevant guide in `node_modules/next/dist/docs/`.
 - After frontend changes, run the app and check the relevant screen in the browser when feasible, in both English and Hebrew if layout is affected.
 - **Never commit, paste, or log real financial data.** Follow "Sensitive financial data" above in code, tests, plans, specs, docs, and commit messages.
+- **APK rebuild rule.** Changes to shared UI components, `src/lib/api.ts`, `src/server/api-handlers/`, query or summary code, money semantics, migrations, i18n messages, or `src/lib/phone-sync/` formats require rebuilding the APK (`npm run mobile:apk`) and reinstalling it on the phones. A new migration also requires updating `APP_SCHEMA_VERSION` (the test enforces this). A change to the snapshot or change-file format requires bumping its version.
 
 ## Architecture
 
@@ -179,7 +180,9 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 - `/transactions`: full table with filters, sorting, KPIs, and inline recategorization.
 - `/credit-card`: card-only spending view.
 - `/trips`: one tab per confirmed trip (totals, category breakdown, daily spend, members), suggested trips, and a Needs a trip queue.
-- `/settings/*`: general, data (import), bank, AI, categories (plus statistics review), appearance.
+- `/settings/*`: general, data (import), bank, AI, categories (plus statistics review), appearance, phone sync.
+- `/settings/phone-sync` (PC only): enable switch, Drive folder path and Check folder, passphrase, status, and the Phones table with per-device counts and errors.
+- Phone app (`*.mobile.tsx`): `/`, `/budget`, `/transactions`, `/credit-card` and `/trips` reuse the PC components. Write controls other than recategorize and approve are hidden, and there is no Settings. `/onboarding` is phone only (sign in, folder, passphrase, name).
 
 ### Key files
 
@@ -200,6 +203,28 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 - `src/server/db/queries/trips.ts`, `src/server/trips/detection.ts`: trip queries and suggestion detection.
 - `src/server/ai/factory.ts`: returns `ClaudeProvider`, `OllamaProvider`, or null.
 - `src/server/ai/prompts.ts`: categorization prompt shared by Claude and Ollama.
+- `src/server/api-handlers/`: GET handlers shared by the desktop API routes and the phone router (`src/mobile/router.ts`).
+- `src/server/lib/category-decisions.ts`: recategorize and approve writes, shared by the desktop routes, the phone, and the PC change applier. Sets `category_decided_at`.
+- `src/lib/phone-sync/`: shared formats: `crypto.ts` (envelope), `format.ts` (constants and file names), `changes.ts` (change file), `outbox.ts`, `scheduler.ts` (debounce), `schema-version.ts`.
+- `src/server/phone-sync/`: PC side: `engine.ts`, `snapshot.ts`, `apply-changes.ts`, `devices.ts`, `folder.ts`, `settings.ts`. Routes under `src/app/api/phone-sync/`.
+- `src/mobile/`: phone only: `router.ts`, `local-writes.ts`, `db/` (sql.js), `drive/` (Drive REST client, Google sign-in), `storage/` (secure store, local files, encrypted outbox), `sync/` (sync engine, sidebar block), `boot/`, `onboarding/`.
+- `next.config.ts`, `scripts/mobile/`: mobile build target, Turbopack loader, release APK script.
+- `capacitor.config.ts`, `android/`: Capacitor Android project.
+
+### Phone app
+
+An Android companion (Capacitor) shows the same pages on a phone from an encrypted copy of the PC database, synced through a Google Drive folder. It is opt-in and off by default. User guide: `docs/phone-app.md`.
+
+- **Mobile build target.** `npm run mobile:build` (`scripts/mobile/build.mjs`) sets `SPENT_TARGET=mobile`, and `next.config.ts` switches to a static export with `distDir: "out-mobile"` and `pageExtensions: ["mobile.tsx", "mobile.ts"]`, so only `*.mobile.tsx` pages and layouts are built. Next writes `.next/` even with a custom export dir, so the script builds in a gitignored shadow project `.mobile-build/` (junctions to `src` and `public`) and copies the result to `out-mobile/`. The always-on service runs from `.next/`, so the mobile build must never write there. The script also passes `.env.mobile` (`NEXT_PUBLIC_SPENT_GOOGLE_WEB_CLIENT_ID`) to the build.
+- **Aliases and loader.** The mobile config aliases `server-only` and `fs` to `src/mobile/empty.ts`, `@/server/db/index` to `src/mobile/db/sqljs-db.ts` (sql.js), and `@/server/sync/scheduler` and `@/server/lib/encryption` to stubs in `src/mobile/stubs/`. `scripts/mobile/turbopack-loader.cjs` swaps the same three modules by file path (they are mostly reached through relative imports) and strips `import "server-only"` from `src/server/**`.
+- **On-device router.** On the phone, `setApiTransport` (`src/lib/api-transport.ts`) points `src/lib/api.ts` at `handleMobileRequest` in `src/mobile/router.ts`. GET routes call the same `src/server/api-handlers/` functions as the desktop routes, against sql.js. The only writes are recategorize and approve (`src/mobile/local-writes.ts`), which apply locally and queue an outbox entry. Anything else returns 404 `Not available on the phone`.
+- **Snapshot.** The PC engine (`src/server/phone-sync/engine.ts`) builds a copy with `VACUUM INTO` (`snapshot.ts`). `bank_credentials` rows stay, but their `credentials_encrypted`, `iv` and `auth_tag` columns are blanked. `settings` and `workspace_settings` keys ending in `_encrypted`, `_iv` or `_auth_tag`, or starting with `phone_sync_`, are deleted. A `phone_sync_meta` table holds `format_version`, `created_at` and per-device `acks`. The copy is encrypted and written to `snapshot.spent.enc` through `snapshot.spent.enc.tmp` and a rename. Drive for desktop uploads it; the PC never talks to Google.
+- **Change files.** Each phone keeps an encrypted outbox and uploads it through the Drive REST API as `changes-<deviceId>.spent.enc`. The PC polls the folder, applies entries in `seq` order (`apply-changes.ts`), and acks the last seq per device in the next snapshot. The phone prunes acked entries and re-applies the rest over each fresh snapshot.
+- **Conflict rule.** An entry is skipped only when the PC row's `category_decided_at` is later than the entry's `at` (ISO 8601 UTC strings compared as strings), or when the row's dedup hash no longer matches. Import and AI never set `category_decided_at`. Skips are acked and counted per device.
+- **Envelope.** `SPNT` magic, format version byte, 16-byte salt and 12-byte IV (the header is authenticated as AAD), then gzip and AES-256-GCM with a PBKDF2-HMAC-SHA256 key at 600,000 iterations. Format versions: the envelope (`FORMAT_VERSION` in `format.ts`), the change file (`formatVersion` in `changes.ts`), and the snapshot (`SNAPSHOT_FORMAT_VERSION` in `snapshot.ts`).
+- **Sync timing.** `DEBOUNCE_MS = 30_000` and `MAX_WAIT_MS = 120_000` (`src/lib/phone-sync/scheduler.ts`) on both sides. The PC also checks for local writes every `LOCAL_CHANGE_CHECK_MS = 5_000` and polls change files every `CHANGE_POLL_MS = 120_000` (`engine.ts`). The phone syncs on open, on foreground, on the Sync button, and after the debounce. There is no background sync and no polling on the phone.
+- **Schema check.** `APP_SCHEMA_VERSION` (the newest migration file name) and `MIN_SNAPSHOT_SCHEMA_VERSION` live in `src/lib/phone-sync/schema-version.ts`. The phone refuses a snapshot from a newer schema (`update_phone_app`) or one older than its minimum (`update_pc`), and keeps its current copy.
+- **Capacitor.** `capacitor.config.ts` (`appId: "dev.spent.app"`, `webDir: "out-mobile"`) and the committed `android/` project. Plugins: `@capacitor/filesystem`, `@capacitor/app`, `@capgo/capacitor-social-login` (Google sign-in with the full Drive scope; `MainActivity` implements `ModifiedMainActivityForSocialLoginPlugin`), and `capacitor-secure-storage-plugin` (Android Keystore). The manifest sets `allowBackup="false"`. `npm run mobile:sync` runs the build plus `cap sync android`. `npm run mobile:apk` then runs `scripts/mobile/assemble-release.mjs`, which reads `SPENT_KEYSTORE_PATH`, `SPENT_KEYSTORE_PASSWORD`, `SPENT_KEY_ALIAS` and `SPENT_KEY_PASSWORD`. Never commit a keystore, `.env.mobile`, or `android/local.properties`.
 
 ### Adding a new import template
 
@@ -231,6 +256,10 @@ npm run dev              # dev server on 127.0.0.1:3000
 npm run lint
 npm run test:imports     # template detection, parsers, preview orchestration
 npm run test:logic       # categorization, review filter, analytics, setup logic
+npm run test:phone-sync  # phone sync: crypto, snapshot, change apply, router, handler parity, engines
+npm run mobile:build     # phone static export into out-mobile/ (never touches .next/)
+npm run mobile:sync      # mobile:build plus cap sync android
+npm run mobile:apk       # mobile:sync plus a signed release APK (JDK 21, Android SDK, SPENT_KEYSTORE_* env vars)
 ```
 
 Tests are plain `node --test` scripts in `scripts/`. `scripts/test-*` is gitignored by default except the tracked ones, so local scratch tests stay out of the repo.
@@ -254,7 +283,6 @@ To reset local state, delete `data/spent.db*` and `data/.encryption-key`.
 - Transaction exports (CSV, OFX).
 - Multi-user support and auth.
 - Hosted or cloud deployment.
-- Mobile app (Phase 2).
 
 ## History
 

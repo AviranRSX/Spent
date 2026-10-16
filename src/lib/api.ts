@@ -965,3 +965,13 @@ export function updatePhoneSyncSettings(input: {
     body: JSON.stringify(input),
   });
 }
+
+export function checkPhoneSyncFolder(folder: string) {
+  return fetchJSON<
+    { ok: true } | { ok: false; reason: "folder_unavailable" | "not_writable" }
+  >("/api/phone-sync/check-folder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folder }),
+  });
+}

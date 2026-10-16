@@ -27,6 +27,8 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { TRIP_KEYS } from "@/components/trips/use-trip-actions";
+import { SyncStatusBlock } from "@/components/phone-sync/sync-status-block";
+import { useDesktopPhoneSync } from "@/components/phone-sync/use-desktop-phone-sync";
 import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { getTrips } from "@/lib/api";
 import { WorkspaceSwitcher } from "./workspace-switcher";
@@ -85,6 +87,7 @@ export function AppSidebar() {
   const t = useTranslations("nav");
   const tripsQuery = useQuery({ queryKey: TRIP_KEYS.overview, queryFn: getTrips });
   const hydrated = useIsHydrated();
+  const phoneSync = useDesktopPhoneSync();
   const needsTripCount = hydrated ? (tripsQuery.data?.needsTripCount ?? 0) : 0;
 
   return (
@@ -174,6 +177,20 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {hydrated && phoneSync.status?.enabled ? (
+          <SyncStatusBlock
+            state={
+              phoneSync.isSyncing
+                ? "syncing"
+                : phoneSync.status.error
+                  ? "error"
+                  : "idle"
+            }
+            lastSyncedAt={phoneSync.status.lastSyncedAt}
+            error={phoneSync.status.error}
+            onSync={phoneSync.sync}
+          />
+        ) : null}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

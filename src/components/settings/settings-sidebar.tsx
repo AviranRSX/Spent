@@ -10,6 +10,7 @@ import {
   Sparkles,
   Layers,
   ShieldAlert,
+  Smartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,12 @@ const GROUPS: NavGroup[] = [
         labelKey: "ai",
         Icon: Sparkles,
         match: (p) => p.startsWith("/settings/ai"),
+      },
+      {
+        href: "/settings/phone-sync",
+        labelKey: "phoneSync",
+        Icon: Smartphone,
+        match: (p) => p.startsWith("/settings/phone-sync"),
       },
     ],
   },

@@ -18,7 +18,7 @@ registerHooks({
 });
 
 const srcLib = path.join(process.cwd(), "src", "lib", "phone-sync");
-const { encodeChangeFile, decodeChangeFile } = await import(
+const { encodeChangeFile, decodeChangeFile, changeSkipReason } = await import(
   pathToFileURL(path.join(srcLib, "changes.ts")).href
 );
 const { nextSeq, pruneAcked, sortForApply } = await import(
@@ -42,9 +42,7 @@ function change(seq, overrides = {}) {
 }
 
 function approveChange(seq) {
-  const c = change(seq, { action: "approve" });
-  delete c.categoryId;
-  return c;
+  return change(seq, { action: "approve" });
 }
 
 function file(overrides = {}) {
@@ -107,11 +105,27 @@ test("decode flags unsupported formatVersion", () => {
   assertBad(file({ formatVersion: 2 }), "unsupported_version");
 });
 
-test("approve ignores categoryId and decode drops it", () => {
+test("approve carries the category the user saw and requires it", () => {
   const decoded = decodeChangeFile(
     encodeRaw(file({ changes: [change(1, { action: "approve", categoryId: 9 })] })),
   );
-  assert.equal("categoryId" in decoded.changes[0], false);
+  assert.equal(decoded.changes[0].categoryId, 9);
+  assertBad(file({ changes: [change(1, { action: "approve", categoryId: undefined })] }));
+  assertBad(file({ changes: [change(1, { action: "approve", categoryId: 0 })] }));
+});
+
+test("changeSkipReason: approve of a category that changed since is a mismatch", () => {
+  const target = { dedupHash: "hash-1", categoryId: 7, categoryDecidedAt: null };
+  assert.equal(changeSkipReason(target, approveChange(1)), null);
+  assert.equal(changeSkipReason({ ...target, categoryId: 8 }, approveChange(1)), "mismatch");
+  assert.equal(changeSkipReason({ ...target, categoryId: null }, approveChange(1)), "mismatch");
+  // setCategory does not depend on the current category.
+  assert.equal(changeSkipReason({ ...target, categoryId: 8 }, change(1)), null);
+  assert.equal(changeSkipReason(null, change(1)), "mismatch");
+  assert.equal(
+    changeSkipReason({ ...target, categoryDecidedAt: "2026-01-02T03:04:06.000Z" }, change(1)),
+    "newer",
+  );
 });
 
 test("decode trims deviceName", () => {

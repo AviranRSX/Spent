@@ -134,7 +134,7 @@ Hidden on the phone: budget amount and budget mode edits, transaction kind chang
   - a per-device sequence number;
   - workspace ID;
   - transaction ID and its dedup hash;
-  - action (`setCategory` with category ID, or `approve`);
+  - action (`setCategory` with the new category ID, or `approve` with the category ID the user saw and approved);
   - the time of the edit.
 - **Change file.** The phone writes the full list of not-yet-acknowledged entries to `changes-<deviceId>.spent.enc`, encrypted the same way, overwriting its own file. A phone never writes any other file. Two phones never touch the same file.
 - **Acknowledgement.** After downloading a snapshot, the phone drops outbox entries at or below the ack for its device. Unacked entries are re-applied on top of the fresh snapshot, so the UI never flips back.
@@ -148,7 +148,7 @@ Hidden on the phone: budget amount and budget mode edits, transaction kind chang
   - A phone entry is skipped only when `category_decided_at` on the PC is later than the edit's timestamp, meaning someone made a newer category decision on the PC or on the other phone.
   - A skipped entry is still acked, and it is counted per device as "skipped: newer decision elsewhere" on the PC's phone sync page. Nothing is skipped without a visible count.
   - AI categorization already skips rows whose category source is `user` (`batchUpdateCategories`), so applied phone edits are not overwritten by later AI runs.
-- **Mismatch rule.** If the transaction ID does not exist or its dedup hash does not match (for example, the PC database was reset), skip the entry, ack it, and record a count shown on the PC's phone sync page. Nothing is silently dropped.
+- **Mismatch rule.** If the transaction ID does not exist or its dedup hash does not match (for example, the PC database was reset), or an `approve` names a category the row no longer has (for example, an AI run changed it since), skip the entry, ack it, and record a count shown on the PC's phone sync page. Nothing is silently dropped.
 - **Freshness for the other phone.** An applied change marks the PC as changed, which triggers the PC's 30-second debounce and a fresh snapshot. The other phone sees the change on its next sync.
 
 ### Encryption

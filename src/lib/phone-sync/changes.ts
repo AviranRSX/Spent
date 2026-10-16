@@ -6,7 +6,8 @@ export type PhoneChange = {
   transactionId: number;
   dedupHash: string;
   action: "setCategory" | "approve";
-  categoryId?: number;
+  /** setCategory: the new category. approve: the category the user saw and approved. */
+  categoryId: number;
   at: string;
 };
 
@@ -20,20 +21,22 @@ export type ChangeFile = {
 /** The parts of a transaction row that decide whether a change still applies. */
 export type ChangeTarget = {
   dedupHash: string;
+  categoryId: number | null;
   categoryDecidedAt: string | null;
 };
 
 /**
  * Why `change` must not be applied to `target`, or null when it applies.
  * Shared by the PC applier and the phone's outbox replay so both follow the
- * same rules: a missing or different row is a mismatch, and a decision made
- * after the change wins.
+ * same rules: a missing or different row, or an approve of a category the row
+ * no longer has, is a mismatch, and a decision made after the change wins.
  */
 export function changeSkipReason(
   target: ChangeTarget | null,
   change: PhoneChange
 ): "mismatch" | "newer" | null {
   if (!target || target.dedupHash !== change.dedupHash) return "mismatch";
+  if (change.action === "approve" && target.categoryId !== change.categoryId) return "mismatch";
   if (target.categoryDecidedAt != null && target.categoryDecidedAt > change.at) return "newer";
   return null;
 }
@@ -75,16 +78,16 @@ function decodeChange(raw: unknown): PhoneChange {
   ) {
     bad("invalid at");
   }
-  const base = { seq, workspaceId, transactionId, dedupHash: raw.dedupHash, at: raw.at };
-  if (raw.action === "setCategory") {
-    return {
-      ...base,
-      action: "setCategory",
-      categoryId: positiveInt(raw.categoryId, "categoryId"),
-    };
-  }
-  if (raw.action === "approve") return { ...base, action: "approve" };
-  return bad("invalid action");
+  if (raw.action !== "setCategory" && raw.action !== "approve") bad("invalid action");
+  return {
+    seq,
+    workspaceId,
+    transactionId,
+    dedupHash: raw.dedupHash,
+    action: raw.action,
+    categoryId: positiveInt(raw.categoryId, "categoryId"),
+    at: raw.at,
+  };
 }
 
 /** Validates a list of changes (seq values must be unique). Throws `bad_format`. */

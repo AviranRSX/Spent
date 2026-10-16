@@ -150,7 +150,7 @@ let seeded;
 try {
   await ready;
   seeded = await pc("init", { passphrase: PASS, folder });
-  assert.ok(seeded.candidates.length >= 7, `enough editable rows: ${seeded.candidates.length}`);
+  assert.ok(seeded.candidates.length >= 8, `enough editable rows: ${seeded.candidates.length}`);
 } catch (error) {
   await cleanup();
   throw error;
@@ -618,5 +618,48 @@ test("6. conflict: a later PC decision wins over the phone edit", TEST_TIMEOUT, 
   assert.deepEqual(phoneA.row(t), { category_id: pcChoice, category_source: "user" });
 
   await assertScreensMatch(phoneA);
+  assert.deepEqual(takePcLogs(), []);
+});
+
+test("7. approve of a category the AI changed since is skipped as a mismatch", TEST_TIMEOUT, async () => {
+  const t = candidates[7];
+  const [seen, later] = await targetsFor(t);
+  await pc("aiCategorize", { id: t, categoryId: seen });
+  assert.equal((await pc("sync")).error, null);
+  await phoneA.engine.sync();
+  assert.equal(phoneA.row(t).category_id, seen);
+
+  phoneA.drive.state.offline = true;
+  const res = await phoneA.request(`/api/transactions/${t}`, {
+    method: "PATCH",
+    body: JSON.stringify({ approve: true }),
+  });
+  assert.deepEqual(res, { status: 200, body: { success: true } });
+  const [entry] = await phoneA.outbox.load();
+  assert.equal(entry.action, "approve");
+  assert.equal(entry.categoryId, seen);
+
+  // An AI pass on the PC changes the category before the approve arrives.
+  await pc("aiCategorize", { id: t, categoryId: later });
+  assert.equal((await pc("sync")).error, null);
+  phoneA.drive.state.offline = false;
+  await phoneA.engine.sync();
+  assert.equal(phoneA.engine.getState().error, null);
+  assert.equal(phoneA.row(t).category_id, later, "replay does not approve the new category");
+
+  const before = device(await pc("status"), phoneA.deviceId);
+  const a = device(await pc("sync"), phoneA.deviceId);
+  assert.equal(a.skippedMismatchCount, before.skippedMismatchCount + 1);
+  assert.equal(a.appliedCount, before.appliedCount);
+  assert.equal(a.lastAppliedSeq, entry.seq);
+  const row = await pc("row", { id: t });
+  assert.equal(row.category_id, later);
+  assert.equal(row.category_source, "ai");
+  assert.equal(row.needs_review, 1, "still needs review");
+  assert.equal(row.category_decided_at, null);
+
+  await phoneA.engine.sync();
+  assert.equal(phoneA.engine.getState().pendingCount, 0);
+  assert.equal(phoneA.row(t).category_id, later);
   assert.deepEqual(takePcLogs(), []);
 });

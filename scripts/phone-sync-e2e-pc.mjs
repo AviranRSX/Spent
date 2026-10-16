@@ -33,6 +33,9 @@ const { getTransactionsSummaryHandler } = await import(
   "../src/server/api-handlers/transactions.ts"
 );
 const transactionRoute = await import("../src/app/api/transactions/[id]/route.ts");
+const { batchUpdateCategories, batchSetNeedsReview } = await import(
+  "../src/server/db/queries/transactions.ts"
+);
 
 const HANDLERS = {
   "/api/home": getHomeHandler,
@@ -109,6 +112,12 @@ const commands = {
       { params: Promise.resolve({ id: String(id) }) }
     );
     return { status: res.status, body: await res.json() };
+  },
+  /** An AI pass sets the category and flags the row for review (not a user decision). */
+  aiCategorize({ id, categoryId }) {
+    batchUpdateCategories(workspaceId, [{ id, categoryId, aiConfidence: 40 }]);
+    batchSetNeedsReview(workspaceId, [{ id, needsReview: true }]);
+    return null;
   },
   stop() {
     engine.stopPhoneSync();

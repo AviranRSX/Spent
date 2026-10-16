@@ -35,6 +35,10 @@ const headers = {
 };
 const txId = transactionIds[0];
 const otherTxId = transactionIds[1];
+// The AI-categorized row flagged for review: approve needs a category.
+const reviewTxId = native
+  .prepare("SELECT id FROM transactions WHERE workspace_id = ? AND needs_review = 1")
+  .get(workspaceId).id;
 
 function rowOf(id) {
   return sqljsDb
@@ -101,22 +105,52 @@ test("PUT records and applies", async () => {
 test("approve records", async () => {
   await sqljsDb.loadDatabase(bytes());
   const { store, state } = setup();
-  const res = await patch(otherTxId, { approve: true });
+  const shown = rowOf(reviewTxId).categoryId;
+  assert.ok(shown != null);
+  const res = await patch(reviewTxId, { approve: true });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { success: true });
   const saved = await store.load();
   assert.equal(saved.length, 1);
   assert.equal(saved[0].action, "approve");
-  assert.equal(saved[0].categoryId, undefined);
+  // The category the user saw, so the PC can tell if it changed since.
+  assert.equal(saved[0].categoryId, shown);
   assert.equal(saved[0].seq, 1);
   assert.equal(state.changes, 1);
+});
+
+test("approve of an uncategorized row is refused and not recorded", async () => {
+  await sqljsDb.loadDatabase(bytes());
+  const { store, state } = setup();
+  sqljsDb.getDb().prepare("UPDATE transactions SET category_id = NULL WHERE id = ?").run(reviewTxId);
+  const res = await patch(reviewTxId, { approve: true });
+  assert.equal(res.status, 400);
+  assert.deepEqual(await res.json(), { error: "transaction has no category to approve" });
+  assert.equal(rowOf(reviewTxId).decidedAt, null);
+  assert.equal((await store.load()).length, 0);
+  assert.equal(state.changes, 0);
+});
+
+test("reapply skips an approve whose category changed in the snapshot", async () => {
+  await sqljsDb.loadDatabase(bytes());
+  const { store } = setup();
+  await patch(reviewTxId, { approve: true });
+  const saved = await store.load();
+  await sqljsDb.loadDatabase(bytes());
+  const other = saved[0].categoryId === categoryIds.Groceries
+    ? categoryIds.Restaurants
+    : categoryIds.Groceries;
+  sqljsDb.getDb().prepare("UPDATE transactions SET category_id = ? WHERE id = ?").run(other, reviewTxId);
+  const before = rowOf(reviewTxId);
+  writes.reapplyOutbox(saved);
+  assert.deepEqual(rowOf(reviewTxId), before);
 });
 
 test("seq continues after ack", async () => {
   await sqljsDb.loadDatabase(bytes());
   const { store } = setup({ ack: 5 });
   await put(txId, { categoryId: categoryIds.Restaurants });
-  await patch(otherTxId, { approve: true });
+  await patch(reviewTxId, { approve: true });
   const saved = await store.load();
   assert.deepEqual(saved.map((c) => c.seq), [6, 7]);
 });
@@ -202,7 +236,7 @@ test("pending count ignores acked entries", async () => {
   const store = createMemoryOutboxStore();
   const { state } = setup({ store });
   await put(txId, { categoryId: categoryIds.Restaurants });
-  await patch(otherTxId, { approve: true });
+  await patch(reviewTxId, { approve: true });
   assert.equal(await writes.getPendingCount(), 2);
   state.ack = 1;
   assert.equal(await writes.getPendingCount(), 1);

@@ -63,14 +63,12 @@ export function applyChangeFile(
 
       const outcome =
         entry.action === "setCategory"
-          ? entry.categoryId == null
-            ? ({ ok: false } as const)
-            : applyUserCategory(
-                entry.workspaceId,
-                entry.transactionId,
-                entry.categoryId,
-                entry.at
-              )
+          ? applyUserCategory(
+              entry.workspaceId,
+              entry.transactionId,
+              entry.categoryId,
+              entry.at
+            )
           : approveCategory(entry.workspaceId, entry.transactionId, entry.at);
       if (outcome.ok) result.applied++;
       else result.skippedMismatch++;

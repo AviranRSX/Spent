@@ -96,7 +96,11 @@ test("applies approve and applies entries in seq order", () => {
   const dev = newDeviceId();
   const res = applyChangeFile(
     file(dev, [
-      entry(2, { action: "approve", categoryId: undefined, at: "2026-03-02T10:00:00.000Z" }),
+      entry(2, {
+        action: "approve",
+        categoryId: categoryIds.Transfers,
+        at: "2026-03-02T10:00:00.000Z",
+      }),
       entry(1, { categoryId: categoryIds.Transfers }),
     ]),
     1000
@@ -141,7 +145,11 @@ test("newer PC decision also skips approve; equal timestamp applies", () => {
   db.prepare("UPDATE transactions SET category_decided_at = ? WHERE id = ?").run(at, txId);
   const res = applyChangeFile(
     file(dev, [
-      entry(1, { action: "approve", categoryId: undefined, at: "2026-03-04T10:00:00.000Z" }),
+      entry(1, {
+        action: "approve",
+        categoryId: categoryIds.Restaurants,
+        at: "2026-03-04T10:00:00.000Z",
+      }),
       entry(2, { at }),
     ]),
     1000
@@ -181,8 +189,13 @@ test("mismatch cases skip and leave the DB unchanged", () => {
     "deleted category": entry(1, { categoryId: 99999999 }),
     "approve on deleted transaction": entry(1, {
       action: "approve",
-      categoryId: undefined,
+      categoryId: categoryIds.Restaurants,
       transactionId: 999999,
+    }),
+    // The phone approved Groceries, but the row is Restaurants now.
+    "approve of a category that changed since": entry(1, {
+      action: "approve",
+      categoryId: categoryIds.Groceries,
     }),
   };
   for (const [name, change] of Object.entries(cases)) {

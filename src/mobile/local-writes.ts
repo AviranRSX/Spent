@@ -44,9 +44,7 @@ type Decision =
   | { ok: true }
   | { ok: false; reason: "not_found" | "category_not_found" };
 
-type Entry =
-  | { action: "setCategory"; categoryId: number }
-  | { action: "approve" };
+type Entry = { action: "setCategory"; categoryId: number } | { action: "approve" };
 
 function failure(decision: Extract<Decision, { ok: false }>): Response {
   if (decision.reason === "not_found") return json({ error: "not found" }, 404);
@@ -63,6 +61,12 @@ async function record(
 
   const context = getTransactionContext(workspaceId, transactionId);
   if (!context) return json({ error: "not found" }, 404);
+  // An approve carries the category the user saw, so the PC can skip it when
+  // the row was recategorized since.
+  const categoryId = entry.action === "setCategory" ? entry.categoryId : context.categoryId;
+  if (categoryId == null) {
+    return json({ error: "transaction has no category to approve" }, 400);
+  }
 
   const at = new Date().toISOString();
   const decision: Decision =
@@ -78,7 +82,8 @@ async function record(
       workspaceId,
       transactionId,
       dedupHash: context.dedupHash,
-      ...entry,
+      action: entry.action,
+      categoryId,
       at,
     };
     const updated = [...existing, change];
@@ -121,14 +126,14 @@ export function reapplyOutbox(changes: PhoneChange[]): void {
     try {
       const target = getTransactionContext(change.workspaceId, change.transactionId);
       if (changeSkipReason(target, change)) continue;
-      if (change.action === "setCategory" && change.categoryId !== undefined) {
+      if (change.action === "setCategory") {
         applyUserCategory(
           change.workspaceId,
           change.transactionId,
           change.categoryId,
           change.at
         );
-      } else if (change.action === "approve") {
+      } else {
         approveCategory(change.workspaceId, change.transactionId, change.at);
       }
     } catch {

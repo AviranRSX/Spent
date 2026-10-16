@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarMenuButton } from "@/components/ui/sidebar";
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useFormatterLabels } from "@/lib/i18n-data";
 import { cn } from "@/lib/utils";
 import { formatSyncTime } from "./relative-time";
@@ -114,21 +114,23 @@ export function SyncStatusBlock({
         </div>
       </div>
 
-      <div className="hidden group-data-[collapsible=icon]:block">
-        <SidebarMenuButton
-          onClick={onSync}
-          disabled={syncing}
-          tooltip={`${t("sync")}: ${summary}`}
-          aria-label={t("sync")}
-        >
-          {error ? (
-            <AlertCircle className="text-destructive" />
-          ) : (
-            <RefreshCw className={cn(syncing && "animate-spin")} />
-          )}
-          <span>{t("sync")}</span>
-        </SidebarMenuButton>
-      </div>
+      <SidebarMenu className="hidden group-data-[collapsible=icon]:flex">
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={onSync}
+            disabled={syncing}
+            tooltip={`${t("sync")}: ${summary}`}
+            aria-label={t("sync")}
+          >
+            {error ? (
+              <AlertCircle className="text-destructive" />
+            ) : (
+              <RefreshCw className={cn(syncing && "animate-spin")} />
+            )}
+            <span>{t("sync")}</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
     </>
   );
 }

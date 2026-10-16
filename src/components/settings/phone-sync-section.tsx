@@ -382,46 +382,74 @@ function DevicesTable({ devices }: { devices: PhoneSyncDevice[] }) {
       : t("deviceErrorUnknown");
   };
 
+  const lastSeen = (device: PhoneSyncDevice) =>
+    device.lastSeenAt ? formatSyncTime(device.lastSeenAt, labels) : t("never");
+  const errorLine = (device: PhoneSyncDevice) =>
+    device.lastError ? (
+      <div className="mt-1 flex items-start gap-1.5 text-xs font-normal text-destructive">
+        <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
+        {errorText(device.lastError)}
+      </div>
+    ) : null;
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{t("colName")}</TableHead>
-          <TableHead>{t("colLastSeen")}</TableHead>
-          <TableHead className="text-end">{t("colApplied")}</TableHead>
-          <TableHead className="max-w-32 text-end whitespace-normal">
-            {t("colSkippedNewer")}
-          </TableHead>
-          <TableHead className="max-w-32 text-end whitespace-normal">
-            {t("colSkippedMismatch")}
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
+    <>
+      <ul className="divide-y divide-border sm:hidden">
         {devices.map((device) => (
-          <TableRow key={device.deviceId}>
-            <TableCell className="min-w-44 font-medium whitespace-normal">
-              {device.deviceName}
-              {device.lastError ? (
-                <div className="mt-1 flex items-start gap-1.5 text-xs font-normal text-destructive">
-                  <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
-                  {errorText(device.lastError)}
+          <li key={device.deviceId} className="py-3 first:pt-0 last:pb-0">
+            <div className="font-medium">{device.deviceName}</div>
+            {errorLine(device)}
+            <dl className="mt-2 space-y-1.5 text-sm">
+              {[
+                [t("colLastSeen"), lastSeen(device)],
+                [t("colApplied"), device.appliedCount],
+                [t("colSkippedNewer"), device.skippedNewerCount],
+                [t("colSkippedMismatch"), device.skippedMismatchCount],
+              ].map(([label, value]) => (
+                <div key={label} className="flex items-baseline justify-between gap-4">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="shrink-0 tabular-nums">{value}</dd>
                 </div>
-              ) : null}
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {device.lastSeenAt ? formatSyncTime(device.lastSeenAt, labels) : t("never")}
-            </TableCell>
-            <TableCell className="text-end tabular-nums">{device.appliedCount}</TableCell>
-            <TableCell className="text-end tabular-nums">
-              {device.skippedNewerCount}
-            </TableCell>
-            <TableCell className="text-end tabular-nums">
-              {device.skippedMismatchCount}
-            </TableCell>
-          </TableRow>
+              ))}
+            </dl>
+          </li>
         ))}
-      </TableBody>
-    </Table>
+      </ul>
+      <div className="hidden sm:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("colName")}</TableHead>
+              <TableHead>{t("colLastSeen")}</TableHead>
+              <TableHead className="text-end">{t("colApplied")}</TableHead>
+              <TableHead className="max-w-32 text-end whitespace-normal">
+                {t("colSkippedNewer")}
+              </TableHead>
+              <TableHead className="max-w-32 text-end whitespace-normal">
+                {t("colSkippedMismatch")}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {devices.map((device) => (
+              <TableRow key={device.deviceId}>
+                <TableCell className="min-w-44 font-medium whitespace-normal">
+                  {device.deviceName}
+                  {errorLine(device)}
+                </TableCell>
+                <TableCell className="text-muted-foreground">{lastSeen(device)}</TableCell>
+                <TableCell className="text-end tabular-nums">{device.appliedCount}</TableCell>
+                <TableCell className="text-end tabular-nums">
+                  {device.skippedNewerCount}
+                </TableCell>
+                <TableCell className="text-end tabular-nums">
+                  {device.skippedMismatchCount}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }

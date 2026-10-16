@@ -591,10 +591,16 @@ test("6. conflict: a later PC decision wins over the phone edit", TEST_TIMEOUT, 
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal((await pc("recategorize", { id: t, categoryId: pcChoice })).status, 200);
   const decidedOnPc = (await pc("row", { id: t })).category_decided_at;
+  // The PC publishes its decision before it has seen the phone's edit.
+  assert.equal((await pc("sync")).error, null);
 
   phoneA.drive.state.offline = false;
   await phoneA.engine.sync();
   assert.equal(phoneA.engine.getState().error, null);
+  // Replaying the unacked edit over that snapshot keeps the newer PC decision,
+  // and the edit stays pending until the PC skips and acks it.
+  assert.equal(phoneA.row(t).category_id, pcChoice);
+  assert.equal(phoneA.engine.getState().pendingCount, 1);
 
   const before = device(await pc("status"), phoneA.deviceId);
   const status = await pc("sync");

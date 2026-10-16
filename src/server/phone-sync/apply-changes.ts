@@ -7,7 +7,7 @@ import {
   approveCategory,
 } from "@/server/lib/category-decisions";
 import { sortForApply } from "@/lib/phone-sync/outbox";
-import type { ChangeFile } from "@/lib/phone-sync/changes";
+import { changeSkipReason, type ChangeFile } from "@/lib/phone-sync/changes";
 import { getDevice, recordApply, upsertDevice } from "./devices";
 
 export interface ApplyChangeFileResult {
@@ -48,12 +48,15 @@ export function applyChangeFile(
       }
       maxSeq = Math.max(maxSeq, entry.seq);
 
-      const ctx = getTransactionContext(entry.workspaceId, entry.transactionId);
-      if (!ctx || ctx.dedupHash !== entry.dedupHash) {
+      const skip = changeSkipReason(
+        getTransactionContext(entry.workspaceId, entry.transactionId),
+        entry
+      );
+      if (skip === "mismatch") {
         result.skippedMismatch++;
         continue;
       }
-      if (ctx.categoryDecidedAt != null && ctx.categoryDecidedAt > entry.at) {
+      if (skip === "newer") {
         result.skippedNewer++;
         continue;
       }

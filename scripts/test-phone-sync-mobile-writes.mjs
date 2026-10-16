@@ -136,6 +136,31 @@ test("reapply after fresh snapshot", async () => {
   assert.equal((await store.load()).length, 1);
 });
 
+test("reapply skips an entry the snapshot already has a newer decision for", async () => {
+  await sqljsDb.loadDatabase(bytes());
+  const { store } = setup();
+  await put(txId, { categoryId: categoryIds.Restaurants });
+  const saved = await store.load();
+  await sqljsDb.loadDatabase(bytes());
+  // The PC decided this row after the phone's edit.
+  const newer = new Date(Date.parse(saved[0].at) + 60_000).toISOString();
+  sqljsDb
+    .getDb()
+    .prepare("UPDATE transactions SET category_id = ?, category_decided_at = ? WHERE id = ?")
+    .run(categoryIds.Groceries, newer, txId);
+  writes.reapplyOutbox(saved);
+  assert.equal(rowOf(txId).categoryId, categoryIds.Groceries);
+  assert.equal(rowOf(txId).decidedAt, newer);
+  // A row whose dedup hash no longer matches is skipped too.
+  const otherBefore = rowOf(otherTxId);
+  writes.reapplyOutbox([
+    { ...saved[0], seq: 2, transactionId: otherTxId, at: newer, dedupHash: "other-hash" },
+  ]);
+  assert.deepEqual(rowOf(otherTxId), otherBefore);
+  // Kept in the outbox: the PC skips and acks it.
+  assert.equal((await store.load()).length, 1);
+});
+
 test("failed results do not record", async () => {
   await sqljsDb.loadDatabase(bytes());
   const { store, state } = setup();

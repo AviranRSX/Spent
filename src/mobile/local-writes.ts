@@ -1,7 +1,7 @@
 import { applyUserCategory, approveCategory } from "@/server/lib/category-decisions";
 import { getTransactionContext } from "@/server/db/queries/transactions";
 import { nextSeq, pruneAcked, sortForApply } from "@/lib/phone-sync/outbox";
-import type { PhoneChange } from "@/lib/phone-sync/changes";
+import { changeSkipReason, type PhoneChange } from "@/lib/phone-sync/changes";
 import type { OutboxStore } from "./storage/outbox-store";
 
 interface LocalWritesConfig {
@@ -112,11 +112,15 @@ export function approveTransaction(workspaceId: number, id: number): Promise<Res
 
 /**
  * Replays outbox entries onto a freshly loaded snapshot, oldest first. Does not
- * touch the outbox or notify anyone. Entries that no longer apply are skipped.
+ * touch the outbox or notify anyone. Entries that no longer apply, by the same
+ * rules the PC uses (changeSkipReason), are skipped but stay in the outbox:
+ * the PC skips and acks them too.
  */
 export function reapplyOutbox(changes: PhoneChange[]): void {
   for (const change of sortForApply(changes)) {
     try {
+      const target = getTransactionContext(change.workspaceId, change.transactionId);
+      if (changeSkipReason(target, change)) continue;
       if (change.action === "setCategory" && change.categoryId !== undefined) {
         applyUserCategory(
           change.workspaceId,

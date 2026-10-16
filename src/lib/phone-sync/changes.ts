@@ -17,6 +17,27 @@ export type ChangeFile = {
   changes: PhoneChange[];
 };
 
+/** The parts of a transaction row that decide whether a change still applies. */
+export type ChangeTarget = {
+  dedupHash: string;
+  categoryDecidedAt: string | null;
+};
+
+/**
+ * Why `change` must not be applied to `target`, or null when it applies.
+ * Shared by the PC applier and the phone's outbox replay so both follow the
+ * same rules: a missing or different row is a mismatch, and a decision made
+ * after the change wins.
+ */
+export function changeSkipReason(
+  target: ChangeTarget | null,
+  change: PhoneChange
+): "mismatch" | "newer" | null {
+  if (!target || target.dedupHash !== change.dedupHash) return "mismatch";
+  if (target.categoryDecidedAt != null && target.categoryDecidedAt > change.at) return "newer";
+  return null;
+}
+
 const DEVICE_ID_PATTERN = /^[a-z0-9-]{8,64}$/;
 const MAX_DEVICE_NAME = 64;
 

@@ -41,6 +41,9 @@ const NEW_PASS = "a brand new passphrase for the pc";
 const DEVICE_ID = "device0aaaa1111";
 const FOLDER = { id: "folder-1", name: "Spent", ownerEmail: "someone@example.com" };
 const txId = transactionIds[0];
+// Replay checks the dedup hash like the PC does, so entries carry the real one.
+const txDedupHash = native.prepare("SELECT dedup_hash FROM transactions WHERE id = ?").get(txId)
+  .dedup_hash;
 const NOW = new Date("2026-10-16T09:00:00.000Z");
 
 /** Snapshot bytes: the seeded DB plus phone_sync_meta acks, then `mutate`. */
@@ -63,7 +66,7 @@ function change(seq, categoryId) {
     seq,
     workspaceId,
     transactionId: txId,
-    dedupHash: "hash-not-checked-here",
+    dedupHash: txDedupHash,
     action: "setCategory",
     categoryId,
     at: new Date(Date.UTC(2026, 9, 16, 8, 0, seq)).toISOString(),

@@ -458,7 +458,9 @@
     "vsLastMonthDown": "↓ {pct}% vs last month",
     "vsLastMonthFlat": "flat vs last month",
     "vsTypical": "vs {amount} typical",
-    "ofBudget": "of {amount}"
+    "ofBudget": "of {amount}",
+    "detailBudgetLabel": "Budget",
+    "detailAutoBudget": "auto"
   },
   "settings": {
     "pageTitle": "Settings",

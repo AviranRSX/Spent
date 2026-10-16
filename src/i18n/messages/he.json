@@ -458,7 +458,9 @@
     "vsLastMonthDown": "↓ {pct}% לעומת חודש שעבר",
     "vsLastMonthFlat": "ללא שינוי מהחודש שעבר",
     "vsTypical": "מתוך {amount} בממוצע",
-    "ofBudget": "מתוך {amount}"
+    "ofBudget": "מתוך {amount}",
+    "detailBudgetLabel": "תקציב",
+    "detailAutoBudget": "אוטומטי"
   },
   "settings": {
     "pageTitle": "הגדרות",

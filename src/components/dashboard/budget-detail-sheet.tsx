@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import {
   Bar,
   BarChart,
@@ -148,6 +149,7 @@ function DetailSkeleton() {
 }
 
 function DetailContent({ data }: { data: CategoryDetail }) {
+  const t = useTranslations("dashboard");
   const queryClient = useQueryClient();
   const categoriesQuery = useQuery({
     queryKey: ["categories"],
@@ -262,9 +264,9 @@ function DetailContent({ data }: { data: CategoryDetail }) {
               <Stat label="Spent" value={formatCurrency(data.spent)} />
               {IS_MOBILE ? (
                 <Stat
-                  label="Budget"
+                  label={t("detailBudgetLabel")}
                   value={data.budget > 0 ? formatCurrency(data.budget) : "–"}
-                  sublabel={data.isAutoBudget && data.budget > 0 ? "auto" : undefined}
+                  sublabel={data.isAutoBudget && data.budget > 0 ? t("detailAutoBudget") : undefined}
                 />
               ) : (
                 <BudgetStat

@@ -5,6 +5,7 @@ import type { Directory, FilesystemPlugin } from "@capacitor/filesystem";
 
 const SNAPSHOT_FILE = "snapshot.spent.enc";
 const OUTBOX_FILE = "outbox.bin";
+const CORRUPT_OUTBOX_FILE = "outbox.corrupt.bin";
 const TMP_SUFFIX = ".tmp";
 
 /** The part of the Filesystem plugin these helpers use. */
@@ -15,6 +16,8 @@ export interface LocalFiles {
   writeSnapshotBlob(bytes: Uint8Array): Promise<void>;
   readOutboxBlob(): Promise<Uint8Array | null>;
   writeOutboxBlob(bytes: Uint8Array): Promise<void>;
+  /** Moves an outbox that can't be decoded out of the way, keeping its bytes. */
+  setAsideOutboxBlob(): Promise<void>;
   wipeLocalData(): Promise<void>;
 }
 
@@ -87,10 +90,23 @@ export function createLocalFiles(
     writeSnapshotBlob: (bytes) => writeBlobAtomically(SNAPSHOT_FILE, bytes),
     readOutboxBlob: () => readBlob(OUTBOX_FILE),
     writeOutboxBlob: (bytes) => writeBlobAtomically(OUTBOX_FILE, bytes),
-    /** Deletes the local snapshot and outbox, including leftover temp files. */
+    async setAsideOutboxBlob() {
+      const { fs, directory } = await open();
+      if (!(await exists(OUTBOX_FILE))) return;
+      if (await exists(CORRUPT_OUTBOX_FILE)) {
+        await fs.deleteFile({ path: CORRUPT_OUTBOX_FILE, directory });
+      }
+      await fs.rename({
+        from: OUTBOX_FILE,
+        to: CORRUPT_OUTBOX_FILE,
+        directory,
+        toDirectory: directory,
+      });
+    },
+    /** Deletes the local snapshot and outbox, including leftover temp and set-aside files. */
     async wipeLocalData() {
       const { fs, directory } = await open();
-      for (const name of [SNAPSHOT_FILE, OUTBOX_FILE]) {
+      for (const name of [SNAPSHOT_FILE, OUTBOX_FILE, CORRUPT_OUTBOX_FILE]) {
         for (const path of [name, name + TMP_SUFFIX]) {
           if (await exists(path)) await fs.deleteFile({ path, directory });
         }
@@ -109,5 +125,6 @@ export const {
   writeSnapshotBlob,
   readOutboxBlob,
   writeOutboxBlob,
+  setAsideOutboxBlob,
   wipeLocalData,
 } = device;

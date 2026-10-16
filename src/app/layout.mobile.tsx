@@ -1,18 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Fraunces, Geist_Mono } from "next/font/google";
-import { I18nProvider } from "@/i18n/client-provider";
-import { ThemeProvider } from "@/components/theme-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/sonner";
-import { QueryProvider } from "@/components/query-provider";
 import { dirFor, defaultLocale, type Locale } from "@/i18n/routing";
-import en from "@/i18n/messages/en.json";
-import he from "@/i18n/messages/he.json";
+import { MobileRoot } from "@/mobile/boot/mobile-root";
 import "./globals.css";
 
-// Phone build root layout. Same providers as layout.tsx, but a static export
-// has no request cookie, so the locale is chosen on the device (Task 14).
-// Until then it renders the default locale from the bundled messages.
+// Phone build root layout. A static export has no request cookie, so the
+// locale is chosen on the device: MobileRoot holds the providers, switches
+// to the PC's language from the snapshot, and updates <html lang dir>.
 
 const inter = Inter({
   variable: "--font-sans",
@@ -29,8 +23,6 @@ const geistMono = Geist_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
 });
-
-const MESSAGES: Record<Locale, Record<string, unknown>> = { en, he };
 
 export const metadata: Metadata = {
   title: "Spent",
@@ -91,16 +83,7 @@ export default function MobileRootLayout({
           aria-hidden="true"
           className="pointer-events-none fixed inset-x-0 top-0 z-20 h-[env(safe-area-inset-top)] bg-background"
         />
-        <I18nProvider locale={locale} messages={MESSAGES[locale]} timeZone="Asia/Jerusalem">
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <QueryProvider>
-              <TooltipProvider>
-                {children}
-                <Toaster />
-              </TooltipProvider>
-            </QueryProvider>
-          </ThemeProvider>
-        </I18nProvider>
+        <MobileRoot>{children}</MobileRoot>
       </body>
     </html>
   );

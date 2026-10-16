@@ -3,9 +3,26 @@
 // imported lazily so desktop builds and node tests never load it.
 import type { SecureStoragePluginPlugin } from "capacitor-secure-storage-plugin";
 
-export type SecretKey = "passphrase" | "deviceId" | "deviceName" | "folderId" | "folderName";
+// snapshotMd5 and lastSyncedAt are not secret, but they describe the local
+// copy, so they live here and Disconnect clears them with the rest.
+export type SecretKey =
+  | "passphrase"
+  | "deviceId"
+  | "deviceName"
+  | "folderId"
+  | "folderName"
+  | "snapshotMd5"
+  | "lastSyncedAt";
 
-const SECRET_KEYS: SecretKey[] = ["passphrase", "deviceId", "deviceName", "folderId", "folderName"];
+const SECRET_KEYS: SecretKey[] = [
+  "passphrase",
+  "deviceId",
+  "deviceName",
+  "folderId",
+  "folderName",
+  "snapshotMd5",
+  "lastSyncedAt",
+];
 const PREFIX = "spent.";
 
 async function storage(): Promise<SecureStoragePluginPlugin> {

@@ -66,6 +66,18 @@ function decodeChange(raw: unknown): PhoneChange {
   return bad("invalid action");
 }
 
+/** Validates a list of changes (seq values must be unique). Throws `bad_format`. */
+export function decodeChanges(raw: unknown): PhoneChange[] {
+  if (!Array.isArray(raw)) bad("invalid changes");
+  const seen = new Set<number>();
+  return raw.map((entry) => {
+    const change = decodeChange(entry);
+    if (seen.has(change.seq)) bad("duplicate seq");
+    seen.add(change.seq);
+    return change;
+  });
+}
+
 export function decodeChangeFile(bytes: Uint8Array): ChangeFile {
   let raw: unknown;
   try {
@@ -85,14 +97,5 @@ export function decodeChangeFile(bytes: Uint8Array): ChangeFile {
   }
   const deviceName = typeof raw.deviceName === "string" ? raw.deviceName.trim() : "";
   if (deviceName === "" || deviceName.length > MAX_DEVICE_NAME) bad("invalid deviceName");
-  if (!Array.isArray(raw.changes)) bad("invalid changes");
-
-  const seen = new Set<number>();
-  const changes = raw.changes.map((entry) => {
-    const change = decodeChange(entry);
-    if (seen.has(change.seq)) bad("duplicate seq");
-    seen.add(change.seq);
-    return change;
-  });
-  return { formatVersion: 1, deviceId: raw.deviceId, deviceName, changes };
+  return { formatVersion: 1, deviceId: raw.deviceId, deviceName, changes: decodeChanges(raw.changes) };
 }

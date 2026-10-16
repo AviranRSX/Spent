@@ -32,6 +32,7 @@ import { useDesktopPhoneSync } from "@/components/phone-sync/use-desktop-phone-s
 import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { getTrips } from "@/lib/api";
 import { IS_MOBILE } from "@/lib/platform";
+import { PhoneSyncBlock } from "@/mobile/sync/phone-sync-block";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface NavDef {
@@ -183,6 +184,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
+        {IS_MOBILE ? <PhoneSyncBlock /> : null}
         {!IS_MOBILE && hydrated && phoneSync.status?.enabled ? (
           <SyncStatusBlock
             state={

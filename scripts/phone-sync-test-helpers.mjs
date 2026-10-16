@@ -180,3 +180,26 @@ export async function seedSyntheticWorkspace(db) {
 
   return { workspaceId, categoryIds, transactionIds };
 }
+
+/**
+ * Runs `fn` with `new Date()` and `Date.now()` pinned to `iso`, so handlers
+ * that read the clock give the same answer in two processes.
+ */
+export async function withFixedNow(iso, fn) {
+  const RealDate = globalThis.Date;
+  const fixed = new RealDate(iso).getTime();
+  class FixedDate extends RealDate {
+    constructor(...args) {
+      super(...(args.length ? args : [fixed]));
+    }
+    static now() {
+      return fixed;
+    }
+  }
+  globalThis.Date = FixedDate;
+  try {
+    return await fn();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}

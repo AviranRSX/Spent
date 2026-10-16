@@ -61,6 +61,8 @@ scripts/test-*
 !scripts/test-trips.mjs
 !scripts/test-trips-db.mjs
 !scripts/test-service-windows.mjs
+!scripts/test-phone-sync-*.mjs
+/out-mobile/
 
 # Temp databases for tests and demo seeds
 .tmp-tests/

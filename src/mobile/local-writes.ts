@@ -1,0 +1,134 @@
+import { applyUserCategory, approveCategory } from "@/server/lib/category-decisions";
+import { getTransactionContext } from "@/server/db/queries/transactions";
+import { nextSeq, pruneAcked, sortForApply } from "@/lib/phone-sync/outbox";
+import type { PhoneChange } from "@/lib/phone-sync/changes";
+import type { OutboxStore } from "./storage/outbox-store";
+
+interface LocalWritesConfig {
+  outbox: OutboxStore;
+  getAck(): number;
+  onChange(): void;
+}
+
+let config: LocalWritesConfig | null = null;
+// Loaded once from the store, then kept in step with every save.
+let cache: PhoneChange[] | null = null;
+// Writes run one at a time so each one sees the previous entry's seq.
+let queue: Promise<unknown> = Promise.resolve();
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export function configureLocalWrites(next: LocalWritesConfig): void {
+  config = next;
+  cache = null;
+}
+
+async function loadCache(current: LocalWritesConfig): Promise<PhoneChange[]> {
+  if (!cache) cache = await current.outbox.load();
+  return cache;
+}
+
+/** Edits still waiting for the PC to acknowledge them. */
+export async function getPendingCount(): Promise<number> {
+  if (!config) return 0;
+  const changes = await loadCache(config);
+  return pruneAcked(changes, config.getAck()).length;
+}
+
+type Decision =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "category_not_found" };
+
+type Entry =
+  | { action: "setCategory"; categoryId: number }
+  | { action: "approve" };
+
+function failure(decision: Extract<Decision, { ok: false }>): Response {
+  if (decision.reason === "not_found") return json({ error: "not found" }, 404);
+  return json({ error: "categoryId is not a category in this workspace" }, 400);
+}
+
+async function record(
+  workspaceId: number,
+  transactionId: number,
+  entry: Entry
+): Promise<Response> {
+  const current = config;
+  if (!current) return json({ error: "Phone storage is not ready" }, 503);
+
+  const context = getTransactionContext(workspaceId, transactionId);
+  if (!context) return json({ error: "not found" }, 404);
+
+  const at = new Date().toISOString();
+  const decision: Decision =
+    entry.action === "setCategory"
+      ? applyUserCategory(workspaceId, transactionId, entry.categoryId, at)
+      : approveCategory(workspaceId, transactionId, at);
+  if (!decision.ok) return failure(decision);
+
+  try {
+    const existing = pruneAcked(await loadCache(current), current.getAck());
+    const change: PhoneChange = {
+      seq: nextSeq(existing, current.getAck()),
+      workspaceId,
+      transactionId,
+      dedupHash: context.dedupHash,
+      ...entry,
+      at,
+    };
+    const updated = [...existing, change];
+    await current.outbox.save(updated);
+    cache = updated;
+  } catch {
+    return json({ error: "Could not save the change on this phone" }, 500);
+  }
+
+  current.onChange();
+  return json({ success: true }, 200);
+}
+
+function enqueue(task: () => Promise<Response>): Promise<Response> {
+  const run = queue.then(task, task);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+export function putTransactionCategory(
+  workspaceId: number,
+  id: number,
+  categoryId: number
+): Promise<Response> {
+  return enqueue(() => record(workspaceId, id, { action: "setCategory", categoryId }));
+}
+
+export function approveTransaction(workspaceId: number, id: number): Promise<Response> {
+  return enqueue(() => record(workspaceId, id, { action: "approve" }));
+}
+
+/**
+ * Replays outbox entries onto a freshly loaded snapshot, oldest first. Does not
+ * touch the outbox or notify anyone. Entries that no longer apply are skipped.
+ */
+export function reapplyOutbox(changes: PhoneChange[]): void {
+  for (const change of sortForApply(changes)) {
+    try {
+      if (change.action === "setCategory" && change.categoryId !== undefined) {
+        applyUserCategory(
+          change.workspaceId,
+          change.transactionId,
+          change.categoryId,
+          change.at
+        );
+      } else if (change.action === "approve") {
+        approveCategory(change.workspaceId, change.transactionId, change.at);
+      }
+    } catch {
+      // One bad entry must not block the rest.
+    }
+  }
+}

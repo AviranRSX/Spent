@@ -18,6 +18,7 @@ import {
 } from "@/server/api-handlers/trips";
 import { listWorkspacesHandler } from "@/server/api-handlers/workspaces";
 import { listIntegrationsHandler } from "@/server/api-handlers/integrations";
+import { approveTransaction, putTransactionCategory } from "./local-writes";
 import type { HandlerContext, HandlerResult } from "@/server/api-handlers/types";
 import type { ActivitySnapshot } from "@/lib/types";
 
@@ -68,11 +69,50 @@ function json(body: unknown, status: number): Response {
   });
 }
 
+const TRANSACTION_WRITE = /^\/api\/transactions\/(\d+)$/;
+
+/** The phone's only writes. Returns null for anything else (404 follows). */
+async function handleTransactionWrite(
+  method: string,
+  id: number,
+  parsed: URL,
+  init?: RequestInit
+): Promise<Response | null> {
+  let body: { categoryId?: unknown; approve?: unknown } = {};
+  try {
+    body = JSON.parse(String(init?.body ?? "{}")) ?? {};
+  } catch {
+    body = {};
+  }
+  try {
+    const workspaceId = getWorkspaceIdFromRequest(
+      new Request(parsed, { headers: init?.headers })
+    );
+    if (method === "PUT") {
+      if (typeof body.categoryId !== "number" || !body.categoryId) {
+        return json({ error: "categoryId is required" }, 400);
+      }
+      return await putTransactionCategory(workspaceId, id, body.categoryId);
+    }
+    if (body.approve === true) return await approveTransaction(workspaceId, id);
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return json({ error: message }, 500);
+  }
+}
+
 /** Answers the client's /api/* calls in-process from the local snapshot. */
 export async function handleMobileRequest(url: string, init?: RequestInit): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
   const parsed = new URL(url, "http://phone.local");
   const path = parsed.pathname;
+
+  const write = TRANSACTION_WRITE.exec(path);
+  if (write && (method === "PUT" || method === "PATCH")) {
+    const response = await handleTransactionWrite(method, Number(write[1]), parsed, init);
+    if (response) return response;
+  }
 
   const route =
     method === "GET" ? ROUTES.find((r) => r.pattern.test(path)) : undefined;

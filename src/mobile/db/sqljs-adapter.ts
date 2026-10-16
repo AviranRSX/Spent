@@ -110,18 +110,24 @@ export class SqlJsDatabase {
       this.depth++;
       try {
         const result = fn(...args);
-        this.depth--;
         this.raw.run(nested ? `RELEASE ${savepoint}` : "COMMIT");
         return result;
       } catch (err) {
-        this.depth--;
-        if (nested) {
-          this.raw.run(`ROLLBACK TO ${savepoint}`);
-          this.raw.run(`RELEASE ${savepoint}`);
-        } else {
-          this.raw.run("ROLLBACK");
+        // A failed COMMIT (e.g. deferred FK violation) leaves the transaction
+        // open, so roll back here. Never let a rollback error mask the original.
+        try {
+          if (nested) {
+            this.raw.run(`ROLLBACK TO ${savepoint}`);
+            this.raw.run(`RELEASE ${savepoint}`);
+          } else {
+            this.raw.run("ROLLBACK");
+          }
+        } catch {
+          // Nothing left to roll back.
         }
         throw err;
+      } finally {
+        this.depth--;
       }
     };
   }

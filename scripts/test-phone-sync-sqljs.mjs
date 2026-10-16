@@ -77,6 +77,30 @@ test("nested transaction rolls back only the inner savepoint", async () => {
   assert.deepEqual(db.prepare("SELECT v FROM t").all(), [{ v: "outer" }]);
 });
 
+test("failed COMMIT propagates the original error and keeps depth consistent", async () => {
+  const db = await empty();
+  db.exec("CREATE TABLE p (id INTEGER PRIMARY KEY)");
+  db.exec(
+    "CREATE TABLE c (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES p(id) DEFERRABLE INITIALLY DEFERRED)"
+  );
+  assert.throws(
+    db.transaction(() => {
+      db.prepare("INSERT INTO c (pid) VALUES (?)").run(999);
+    }),
+    /FOREIGN KEY/
+  );
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM c").get().n, 0);
+
+  // A later top-level transaction with a nested one must still work.
+  db.transaction(() => {
+    db.prepare("INSERT INTO p (id) VALUES (1)").run();
+    db.transaction(() => {
+      db.prepare("INSERT INTO c (pid) VALUES (1)").run();
+    })();
+  })();
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM c").get().n, 1);
+});
+
 test("pragma", async () => {
   const db = await empty();
   assert.ok(Array.isArray(db.pragma("foreign_keys")));

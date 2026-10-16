@@ -57,6 +57,8 @@ export interface TripMember {
   /** Normalized ISO code; the stored raw value is never rewritten. */
   originalCurrency: string;
   status: "completed" | "pending";
+  /** Trips never include transfers, so the row picks from this kind's categories. */
+  kind: "expense" | "income";
   categoryId: number | null;
   categoryName: string | null;
   categoryColor: string | null;

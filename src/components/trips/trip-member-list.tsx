@@ -2,9 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { translateCategoryName } from "@/lib/i18n-data";
 import { cn } from "@/lib/utils";
 import {
   formatOriginalAmount,
@@ -14,8 +12,10 @@ import {
 import { TRANSFERS_CATEGORY_NAME } from "@/lib/trips/summary";
 import type { MembershipReason, TripMember } from "@/lib/trips/types";
 import type { Locale } from "@/i18n/routing";
+import { TripMemberCategoryPicker } from "./trip-member-category-picker";
 
 interface TripMemberListProps {
+  tripId: number;
   members: TripMember[];
   onRemove: (id: number) => void;
   removingId: number | null;
@@ -29,7 +29,7 @@ const REASON_KEY: Record<MembershipReason, string> = {
 
 const MUTED_PILL = "rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium";
 
-export function TripMemberList({ members, onRemove, removingId }: TripMemberListProps) {
+export function TripMemberList({ tripId, members, onRemove, removingId }: TripMemberListProps) {
   const t = useTranslations("trips");
   const before = members.filter((m) => m.phase === "before");
   const during = members.filter((m) => m.phase === "during");
@@ -44,10 +44,10 @@ export function TripMemberList({ members, onRemove, removingId }: TripMemberList
       ) : (
         <div className="space-y-6">
           {before.length > 0 ? (
-            <MemberGroup title={t("detail.beforeGroup")} rows={before} onRemove={onRemove} removingId={removingId} />
+            <MemberGroup tripId={tripId} title={t("detail.beforeGroup")} rows={before} onRemove={onRemove} removingId={removingId} />
           ) : null}
           {during.length > 0 ? (
-            <MemberGroup title={t("detail.duringGroup")} rows={during} onRemove={onRemove} removingId={removingId} />
+            <MemberGroup tripId={tripId} title={t("detail.duringGroup")} rows={during} onRemove={onRemove} removingId={removingId} />
           ) : null}
         </div>
       )}
@@ -56,18 +56,19 @@ export function TripMemberList({ members, onRemove, removingId }: TripMemberList
 }
 
 function MemberGroup({
+  tripId,
   title,
   rows,
   onRemove,
   removingId,
 }: {
+  tripId: number;
   title: string;
   rows: TripMember[];
   onRemove: (id: number) => void;
   removingId: number | null;
 }) {
   const t = useTranslations("trips");
-  const tCat = useTranslations("categoriesSeeded");
   const locale = useLocale() as Locale;
   return (
     <div>
@@ -77,9 +78,6 @@ function MemberGroup({
           const pending = row.status === "pending";
           // Same rule as the server summary: Transfers rows are listed but not counted.
           const transfer = row.categoryName === TRANSFERS_CATEGORY_NAME;
-          const category = row.categoryName
-            ? translateCategoryName(row.categoryName, tCat)
-            : t("detail.uncategorized");
           return (
             <li
               key={row.id}
@@ -93,20 +91,7 @@ function MemberGroup({
                   {row.description}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <Badge
-                    variant="outline"
-                    style={
-                      row.categoryColor
-                        ? {
-                            borderColor: row.categoryColor + "40",
-                            backgroundColor: row.categoryColor + "15",
-                            color: row.categoryColor,
-                          }
-                        : undefined
-                    }
-                  >
-                    {category}
-                  </Badge>
+                  <TripMemberCategoryPicker tripId={tripId} member={row} />
                   <span>{t(REASON_KEY[row.reason])}</span>
                   {pending ? <span className={MUTED_PILL}>{t("detail.pending")}</span> : null}
                   {transfer ? (

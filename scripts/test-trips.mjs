@@ -590,3 +590,27 @@ test("foreign amounts lead with the symbol and carry no bidi marks", async () =>
   const bidiMarks = new RegExp(`[${String.fromCharCode(0x200e, 0x200f, 0x61c)}]`);
   assert.doesNotMatch(yen, bidiMarks);
 });
+
+test("trip category picker groups leaves under parents and never offers a parent", async () => {
+  const { groupCategoryOptions } = await import("../src/lib/category-options.ts");
+  const cat = (id, name, parentId = null) => ({
+    id, name, parentId, color: "#000000", icon: null, kind: "expense",
+    budgetMode: "budgeted", description: null,
+  });
+  const groups = groupCategoryOptions([
+    cat(1, "Trips & Travel"),
+    cat(2, "Flights", 1),
+    cat(3, "Food"),
+    cat(4, "Hotels", 1),
+    cat(5, "Restaurants", 3),
+    cat(6, "Loose"),
+  ]);
+  assert.deepEqual(
+    groups.map((g) => [g.parentName, g.options.map((o) => o.name)]),
+    [
+      ["Food", ["Restaurants"]],
+      ["Trips & Travel", ["Flights", "Hotels"]],
+      [null, ["Loose"]],
+    ]
+  );
+});

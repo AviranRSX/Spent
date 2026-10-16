@@ -314,6 +314,8 @@ export function getTripDetail(workspaceId: number, id: number): TripDetail | nul
       originalAmount: m.originalAmount,
       originalCurrency: normalizeCurrency(m.originalCurrency),
       status: m.status,
+      // loadTripTransactions drops transfers, so the kind is expense or income.
+      kind: m.kind === "income" ? "income" : "expense",
       categoryId: m.categoryId,
       categoryName: m.categoryName,
       categoryColor: m.categoryColor,

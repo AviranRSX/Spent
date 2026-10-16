@@ -120,6 +120,7 @@ export function TripDetailTab({ tripId, onDeleted }: TripDetailTabProps) {
       </div>
 
       <TripMemberList
+        tripId={detail.trip.id}
         members={detail.members}
         onRemove={(id) => removeMutation.mutate(id)}
         removingId={removeMutation.isPending ? (removeMutation.variables ?? null) : null}

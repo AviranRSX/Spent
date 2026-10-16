@@ -264,6 +264,12 @@
       "recategorizeNone": "אין מה לסווג מחדש",
       "recategorizeDescription": "הצעות AI לתנועות בטיול שעדיין מסווגות כנסיעות ({count}). הן נשארות בטיול.",
       "uncategorized": "ללא קטגוריה",
+      "changeCategory": "שינוי קטגוריה, כרגע {category}",
+      "changeCategoryHint": "שינוי קטגוריה",
+      "categoryChangedToast": "הועבר ל{category}",
+      "categoryChangedLeftToast": "הועבר ל{category}. העסקה כבר לא מתאימה לטיול הזה.",
+      "keepInTrip": "השאר בטיול",
+      "keptInTripToast": "נשאר בטיול הזה",
       "noMembers": "עדיין אין תנועות בטיול הזה."
     },
     "needs": {

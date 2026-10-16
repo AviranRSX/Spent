@@ -264,6 +264,12 @@
       "recategorizeNone": "Nothing to re-categorize",
       "recategorizeDescription": "AI suggestions for {count, plural, one {# transaction} other {# transactions}} in this trip still labeled Travel. They stay in the trip.",
       "uncategorized": "Uncategorized",
+      "changeCategory": "Change category, now {category}",
+      "changeCategoryHint": "Change category",
+      "categoryChangedToast": "Moved to {category}",
+      "categoryChangedLeftToast": "Moved to {category}. It no longer matches this trip.",
+      "keepInTrip": "Keep in trip",
+      "keptInTripToast": "Kept in this trip",
       "noMembers": "No transactions in this trip yet."
     },
     "needs": {

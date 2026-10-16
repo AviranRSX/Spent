@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Phone build output and its temporary shadow project.
+    "out-mobile/**",
+    ".mobile-build/**",
   ]),
 ]);
 

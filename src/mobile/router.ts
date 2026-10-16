@@ -1,4 +1,4 @@
-import { getDb } from "@/mobile/db/sqljs-db";
+import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 import { getHomeHandler } from "@/server/api-handlers/home";
 import { getSummaryHandler } from "@/server/api-handlers/summary";
 import {
@@ -68,25 +68,6 @@ function json(body: unknown, status: number): Response {
   });
 }
 
-/** Same rule as getWorkspaceIdFromRequest: a valid header id, else the lowest id. */
-function resolveWorkspaceId(headers: Headers): number {
-  const header = headers.get("x-workspace-id");
-  if (header) {
-    const id = Number(header);
-    if (Number.isInteger(id) && id > 0) {
-      const row = getDb().prepare("SELECT id FROM workspaces WHERE id = ?").get(id) as
-        | { id: number }
-        | undefined;
-      if (row) return row.id;
-    }
-  }
-  const row = getDb().prepare("SELECT id FROM workspaces ORDER BY id LIMIT 1").get() as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error("No workspace exists in the snapshot");
-  return row.id;
-}
-
 /** Answers the client's /api/* calls in-process from the local snapshot. */
 export async function handleMobileRequest(url: string, init?: RequestInit): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
@@ -106,7 +87,12 @@ export async function handleMobileRequest(url: string, init?: RequestInit): Prom
       params[name] = decodeURIComponent(match?.[i + 1] ?? "");
     });
     const ctx: HandlerContext = {
-      workspaceId: route.scoped === false ? 0 : resolveWorkspaceId(new Headers(init?.headers)),
+      // Same rule as desktop: a valid header id, else the lowest id. Its getDb
+      // is the sql.js snapshot on the phone.
+      workspaceId:
+        route.scoped === false
+          ? 0
+          : getWorkspaceIdFromRequest(new Request(parsed, { headers: init?.headers })),
       query: parsed.searchParams,
       params,
       now: new Date(),

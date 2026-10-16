@@ -42,10 +42,15 @@ const KNOWN_ERRORS: readonly PhoneSyncError[] = [
   "sync_failed",
 ];
 
-function isFsErrorOnPath(err: unknown, folder: string | null): boolean {
+/** True when `err` is a file system error on `folder` or a path inside it. */
+export function isFsErrorOnPath(err: unknown, folder: string | null): boolean {
   const errPath = (err as NodeJS.ErrnoException | null)?.path;
   if (!folder || typeof errPath !== "string") return false;
-  return path.resolve(errPath).toLowerCase().startsWith(path.resolve(folder).toLowerCase());
+  const target = path.resolve(errPath).toLowerCase();
+  const root = path.resolve(folder).toLowerCase();
+  // Separator boundary: "Spent-old" is not inside "Spent".
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  return target === root || target.startsWith(prefix);
 }
 
 interface PhoneSyncState {

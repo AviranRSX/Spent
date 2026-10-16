@@ -346,3 +346,15 @@ test("local change triggers debounce", async () => {
   engine.stopPhoneSync();
   assert.equal(globalThis._phoneSync?.scheduler ?? null, null);
 });
+
+test("folder error matching respects the path separator boundary", () => {
+  const folder = path.join(dataDir, "drive-boundary");
+  const errAt = (p) => Object.assign(new Error("fs"), { code: "ENOENT", path: p });
+  assert.equal(engine.isFsErrorOnPath(errAt(folder), folder), true);
+  assert.equal(engine.isFsErrorOnPath(errAt(path.join(folder, SNAPSHOT_FILE)), folder), true);
+  assert.equal(engine.isFsErrorOnPath(errAt(folder + path.sep), folder), true);
+  assert.equal(engine.isFsErrorOnPath(errAt(`${folder}-other`), folder), false);
+  assert.equal(engine.isFsErrorOnPath(errAt(path.join(`${folder}2`, "x")), folder), false);
+  assert.equal(engine.isFsErrorOnPath(errAt(folder), null), false);
+  assert.equal(engine.isFsErrorOnPath(new Error("no path"), folder), false);
+});

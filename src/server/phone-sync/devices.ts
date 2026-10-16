@@ -66,7 +66,7 @@ export function recordApply(
   getDb()
     .prepare(
       `UPDATE phone_sync_devices
-       SET last_applied_seq = ?,
+       SET last_applied_seq = MAX(last_applied_seq, ?),
            applied_count = applied_count + ?,
            skipped_newer_count = skipped_newer_count + ?,
            skipped_mismatch_count = skipped_mismatch_count + ?

@@ -15,6 +15,7 @@ import type {
   ImportSourceKind,
   ImportTemplateType,
   DataSourceMode,
+  PhoneSyncStatus,
 } from "./types";
 import type {
   NeedsTripItem,
@@ -942,5 +943,25 @@ export function getTripMemberships(transactionIds: number[]) {
 export function previewTripTravelRecategorize(tripId: number) {
   return fetchJSON<CategorizePreview>(`/api/trips/${tripId}/recategorize`, {
     method: "POST",
+  });
+}
+
+export function getPhoneSyncStatus() {
+  return fetchJSON<PhoneSyncStatus>("/api/phone-sync");
+}
+
+export function runPhoneSyncNow() {
+  return fetchJSON<PhoneSyncStatus>("/api/phone-sync/run", { method: "POST" });
+}
+
+export function updatePhoneSyncSettings(input: {
+  enabled?: boolean;
+  folder?: string;
+  passphrase?: string;
+}) {
+  return fetchJSON<PhoneSyncStatus>("/api/phone-sync/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
   });
 }

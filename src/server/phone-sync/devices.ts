@@ -81,6 +81,19 @@ export function recordApply(
     );
 }
 
+/**
+ * Creates a placeholder row (named after the id) for a device seen only through
+ * an unreadable change file, so its error can be recorded. Leaves the mtime
+ * unset so the file is retried.
+ */
+export function ensureDevice(deviceId: string): void {
+  getDb()
+    .prepare(
+      "INSERT OR IGNORE INTO phone_sync_devices (device_id, device_name) VALUES (?, ?)"
+    )
+    .run(deviceId, deviceId);
+}
+
 /** Stores the last decrypt or format error for a device, or clears it with null. */
 export function recordDeviceError(deviceId: string, error: string | null): void {
   getDb()

@@ -815,3 +815,22 @@ export interface PhoneSyncDevice {
   lastSeenAt: string | null;
   lastError: string | null;
 }
+
+export type PhoneSyncError =
+  | "folder_unavailable"
+  | "not_writable"
+  | "no_passphrase"
+  | "bad_passphrase"
+  | "bad_format";
+
+export interface PhoneSyncStatus {
+  enabled: boolean;
+  folder: string | null;
+  hasPassphrase: boolean;
+  state: "idle" | "syncing" | "error" | "disabled";
+  lastSyncedAt: string | null;
+  lastSnapshotAt: string | null;
+  lastSnapshotBytes: number | null;
+  error: PhoneSyncError | null;
+  devices: PhoneSyncDevice[];
+}

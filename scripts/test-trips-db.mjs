@@ -56,15 +56,19 @@ function childrenOf(db, workspaceId, parentName) {
     .all(workspaceId, parentName);
 }
 
-test("migration 025 groups Flights, Travel and Travel Insurance under Trips & Travel", () => {
+test("migrations 025 and 026 group the travel leaves under Trips & Travel", () => {
   const db = getDb();
   assert.deepEqual(childrenOf(db, 1, "Trips & Travel"), [
     { name: "Flights", budgetMode: "tracking" },
+    { name: "Hotels", budgetMode: "tracking" },
     { name: "Travel", budgetMode: "budgeted" },
     { name: "Travel Insurance", budgetMode: "tracking" },
   ]);
   const travel = getCategoryByName(1, "Travel", "expense");
-  assert.match(travel.description, /^Lodging, tours, car rental and travel agencies \(hotels/);
+  assert.match(travel.description, /^Tours, car rental and travel agencies .*NOT lodging \(Hotels\)/);
+  const hotels = getCategoryByName(1, "Hotels", "expense");
+  assert.match(hotels.description, /^Lodging: hotels, hostels/);
+  assert.equal(hotels.icon, "hotel");
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'trip%' ORDER BY name")
     .all()
@@ -77,6 +81,7 @@ test("new workspaces get the Trips & Travel group", () => {
   const ws = createWorkspace("Trips seed test");
   assert.deepEqual(childrenOf(db, ws.id, "Trips & Travel"), [
     { name: "Flights", budgetMode: "tracking" },
+    { name: "Hotels", budgetMode: "tracking" },
     { name: "Travel", budgetMode: "budgeted" },
     { name: "Travel Insurance", budgetMode: "tracking" },
   ]);
@@ -84,6 +89,7 @@ test("new workspaces get the Trips & Travel group", () => {
 
 test("seeded parent map routes the travel leaves to Trips & Travel", () => {
   assert.equal(SEEDED_CATEGORY_PARENTS.Flights, "Trips & Travel");
+  assert.equal(SEEDED_CATEGORY_PARENTS.Hotels, "Trips & Travel");
   assert.equal(SEEDED_CATEGORY_PARENTS.Travel, "Trips & Travel");
   assert.equal(SEEDED_CATEGORY_PARENTS["Travel Insurance"], "Trips & Travel");
 });
@@ -157,6 +163,58 @@ test("migration 025 handles missing Travel and pre-existing names", () => {
       .prepare("SELECT COUNT(*) AS n FROM categories WHERE workspace_id = 3 AND name IN ('Flights', 'Travel Insurance')")
       .get();
     assert.equal(count3.n, 2);
+  } finally {
+    db.close();
+    rmSync(edgeDir, { recursive: true, force: true });
+  }
+});
+
+test("migration 026 adds Hotels without touching user edits", () => {
+  const edgeDir = mkdtempSync(path.join(tmpRoot, "spent-hotels-edge-"));
+  const db = new Database(path.join(edgeDir, "edge.db"));
+  try {
+    const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
+    const run = (file) => {
+      db.pragma("foreign_keys = OFF");
+      db.exec(readFileSync(path.join(migrationsDir, file), "utf8"));
+      db.pragma("foreign_keys = ON");
+    };
+    for (const file of files.filter((f) => f < "026")) run(file);
+
+    // Workspace 1 edited its Travel description.
+    db.prepare(
+      "UPDATE categories SET description = 'My own travel notes' WHERE workspace_id = 1 AND name = 'Travel'"
+    ).run();
+    // Workspace 2 already has a user-made hotels leaf and no Trips & Travel group.
+    db.prepare("INSERT INTO workspaces (id, name, slug) VALUES (2, 'Own', 'own')").run();
+    db.prepare(
+      `INSERT INTO categories (workspace_id, parent_id, name, color, icon, kind, budget_mode)
+       VALUES (2, NULL, 'hotels', '#123456', 'home', 'expense', 'budgeted')`
+    ).run();
+    // Workspace 3 has no categories, so its Hotels leaf stays ungrouped.
+    db.prepare("INSERT INTO workspaces (id, name, slug) VALUES (3, 'Empty', 'empty')").run();
+
+    run("026_hotels.sql");
+
+    assert.ok(childrenOf(db, 1, "Trips & Travel").some((c) => c.name === "Hotels"));
+    const travel1 = db
+      .prepare("SELECT description FROM categories WHERE workspace_id = 1 AND name = 'Travel'")
+      .get();
+    assert.equal(travel1.description, "My own travel notes");
+    const flights1 = db
+      .prepare("SELECT description FROM categories WHERE workspace_id = 1 AND name = 'Flights'")
+      .get();
+    assert.match(flights1.description, /NOT hotels \(Hotels\)/);
+
+    const hotels2 = db
+      .prepare("SELECT name, color FROM categories WHERE workspace_id = 2 AND lower(name) = 'hotels'")
+      .all();
+    assert.deepEqual(hotels2, [{ name: "hotels", color: "#123456" }]);
+
+    const hotels3 = db
+      .prepare("SELECT parent_id AS parentId FROM categories WHERE workspace_id = 3 AND name = 'Hotels'")
+      .get();
+    assert.equal(hotels3.parentId, null);
   } finally {
     db.close();
     rmSync(edgeDir, { recursive: true, force: true });

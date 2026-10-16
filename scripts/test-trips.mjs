@@ -323,7 +323,7 @@ test("categorization prompts tell the AI to categorize spending abroad by what i
     );
     assert.match(
       prompt,
-      /Spending abroad is categorized by what it is \(Restaurants, Groceries, Transport, Shopping\)\. Use Hotels for any lodging .*Use Travel only for tours, rentals and travel agencies\./
+      /Spending abroad is categorized by what it is \(Restaurants, Groceries, Transport, Shopping\)\. Use Hotels for any lodging .*Use Activities for tours, attractions and excursions on a trip\. Use Travel only for car rentals and travel agencies\./
     );
   }
 });
@@ -572,7 +572,7 @@ test("trip strings exist in English and Hebrew with the same keys and no em dash
   const en = JSON.parse(readFileSync("src/i18n/messages/en.json", "utf8"));
   const he = JSON.parse(readFileSync("src/i18n/messages/he.json", "utf8"));
   assert.deepEqual(flattenKeys(he.trips).sort(), flattenKeys(en.trips).sort());
-  for (const key of ["Trips & Travel", "Flights", "Hotels", "Travel Insurance"]) {
+  for (const key of ["Trips & Travel", "Activities", "Flights", "Hotels", "Travel Insurance"]) {
     assert.ok(en.categoriesSeeded[key], `en categoriesSeeded.${key}`);
     assert.ok(he.categoriesSeeded[key], `he categoriesSeeded.${key}`);
   }

@@ -5,6 +5,7 @@ import { isOnlineTransaction } from "./online-merchants";
 export const TRIP_DURING_BUFFER_DAYS = 2;
 export const TRIP_PRE_WINDOW_DAYS = 180;
 export const TRAVEL_CATEGORY_NAMES: readonly string[] = [
+  "Activities",
   "Flights",
   "Hotels",
   "Travel",

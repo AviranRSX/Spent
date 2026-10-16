@@ -46,7 +46,7 @@ function renderCategories(categories: CategoryForCategorization[]): string {
 const HIERARCHY_RULE =
   "Category lists may show group headers (e.g., 'Food:') with leaves indented beneath them. Group headers are NOT valid categoryName values - always pick a leaf (the indented name).";
 export const TRAVEL_SPENDING_RULE =
-  "Spending abroad is categorized by what it is (Restaurants, Groceries, Transport, Shopping). Use Hotels for any lodging (hotels, hostels, zimmers, Airbnb, Booking.com), in Israel or abroad. Use Travel only for tours, rentals and travel agencies.";
+  "Spending abroad is categorized by what it is (Restaurants, Groceries, Transport, Shopping). Use Hotels for any lodging (hotels, hostels, zimmers, Airbnb, Booking.com), in Israel or abroad. Use Activities for tours, attractions and excursions on a trip. Use Travel only for car rentals and travel agencies.";
 
 function renderCorrections(corrections: PastCorrection[]): string {
   if (corrections.length === 0) return "";

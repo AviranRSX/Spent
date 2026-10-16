@@ -49,8 +49,8 @@ export function countWorkspaces(): number {
 // Cumulative seed list reflecting migrations 001 + 006 (removed "Other")
 // + 008 (added "Salary", kind column) + 010 (brighter colors)
 // + 011 (added 7 more) + 014 (Sports & Hobbies + descriptions)
-// + 023 (income Transfers) + 025 (Trips & Travel group) + 026 (Hotels).
-// Keep in sync.
+// + 023 (income Transfers) + 025 (Trips & Travel group) + 026 (Hotels)
+// + 027 (Activities). Keep in sync.
 interface SeedCategory {
   name: string;
   color: string;
@@ -70,9 +70,10 @@ const SEED_CATEGORIES: SeedCategory[] = [
   { name: "Education", color: "#94A0DD", icon: "graduation-cap", kind: "expense", description: "Schools, universities, tuition, online courses (Coursera, Udemy, MasterClass), textbooks, school supplies, exam fees. NOT shooting ranges, gun training, or martial-arts classes (Sports & Hobbies) and NOT music lessons for fun (Sports & Hobbies)." },
   { name: "Bills & Utilities", color: "#B8A98F", icon: "receipt", kind: "expense", description: "Electricity, water, gas, internet, phone bills, municipal arnona, building vaad bayit. NOT streaming or software subscriptions (Subscriptions)." },
   { name: "Subscriptions", color: "#AB9DDB", icon: "refresh-cw", kind: "expense", description: "Recurring digital services: Netflix, Spotify, YouTube Premium, iCloud, Google One, SaaS tools, news subscriptions. NOT physical utility bills (Bills & Utilities)." },
-  { name: "Travel", color: "#64B8D2", icon: "plane", kind: "expense", description: "Tours, car rental and travel agencies (guided tours, attraction passes, rental cars abroad, package deals). NOT lodging (Hotels), NOT flights (Flights), NOT travel insurance (Travel Insurance), and NOT everyday spending abroad: categorize restaurants, groceries, transport and shopping abroad by what they are." },
-  { name: "Hotels", color: "#C08FB0", icon: "hotel", kind: "expense", budgetMode: "tracking", description: "Lodging: hotels, hostels, resorts, guesthouses, zimmers (צימר), Airbnb, Booking.com, Agoda, Expedia hotel bookings and vacation rentals, in Israel or abroad. NOT flights (Flights), NOT tours, car rental or travel agency packages (Travel), and NOT restaurants or bars inside a hotel when billed separately (Restaurants)." },
-  { name: "Flights", color: "#8AA7E0", icon: "plane", kind: "expense", budgetMode: "tracking", description: "Airline tickets and flight booking sites (El Al, Israir, Arkia, Wizz Air, Ryanair, Kiwi.com). NOT hotels (Hotels), NOT tours (Travel) and NOT travel insurance (Travel Insurance)." },
+  { name: "Travel", color: "#64B8D2", icon: "plane", kind: "expense", description: "Car rental and travel agencies (rental cars abroad, package deals, travel agency fees). NOT tours or attractions (Activities), NOT lodging (Hotels), NOT flights (Flights), NOT travel insurance (Travel Insurance), and NOT everyday spending abroad: categorize restaurants, groceries, transport and shopping abroad by what they are." },
+  { name: "Hotels", color: "#C08FB0", icon: "hotel", kind: "expense", budgetMode: "tracking", description: "Lodging: hotels, hostels, resorts, guesthouses, zimmers (צימר), Airbnb, Booking.com, Agoda, Expedia hotel bookings and vacation rentals, in Israel or abroad. NOT flights (Flights), NOT tours or attractions (Activities), NOT car rental or travel agency packages (Travel), and NOT restaurants or bars inside a hotel when billed separately (Restaurants)." },
+  { name: "Activities", color: "#D98C5F", icon: "compass", kind: "expense", budgetMode: "tracking", description: "Things to do on a trip: guided tours, day trips, excursions, attraction and museum tickets, theme parks, diving, ski passes and experiences booked through GetYourGuide, Viator, Klook or Tiqets. NOT lodging (Hotels), NOT flights (Flights), NOT car rental or travel agency packages (Travel), and NOT everyday outings at home (Entertainment, Sports & Hobbies)." },
+  { name: "Flights", color: "#8AA7E0", icon: "plane", kind: "expense", budgetMode: "tracking", description: "Airline tickets and flight booking sites (El Al, Israir, Arkia, Wizz Air, Ryanair, Kiwi.com). NOT hotels (Hotels), NOT tours (Activities) and NOT travel insurance (Travel Insurance)." },
   { name: "Travel Insurance", color: "#C79A8B", icon: "shield", kind: "expense", budgetMode: "tracking", description: "Insurance bought for a trip (travel insurance policies, travel health cover, trip cancellation cover). NOT car, home, health or life premiums (Insurance)." },
   { name: "Cash & ATM", color: "#DBC27F", icon: "banknote", kind: "expense", description: "ATM withdrawals, cash advances, currency exchange. Often labeled bankomat / כספומט." },
   { name: "Transfers", color: "#A2AAC2", icon: "arrow-left-right", kind: "expense", description: "Bank-to-bank transfers, Bit/PayBox to people, internal moves." },
@@ -91,15 +92,15 @@ const SEED_CATEGORIES: SeedCategory[] = [
   { name: "Refunds & Reimbursements", color: "#7DC8B3", icon: "rotate-ccw", kind: "income", description: "Returns, expense reimbursements, insurance payouts, refunds from cancellations." },
 ];
 
-// Mirrors migrations 025 and 026. New workspaces get this one group so trips work
+// Mirrors migrations 025, 026 and 027. New workspaces get this one group so trips work
 // out of the box; the other seeded groups only exist in migrated workspaces.
 const TRIPS_PARENT = {
   name: "Trips & Travel",
   color: "#4FA3A5",
   icon: "plane",
-  description: "Rollup of trip costs: flights, hotels, tours, travel insurance.",
+  description: "Rollup of trip costs: flights, hotels, activities, car rental, travel insurance.",
 } as const;
-const TRIPS_CHILDREN = ["Flights", "Hotels", "Travel", "Travel Insurance"] as const;
+const TRIPS_CHILDREN = ["Activities", "Flights", "Hotels", "Travel", "Travel Insurance"] as const;
 
 function slugify(name: string): string {
   return name

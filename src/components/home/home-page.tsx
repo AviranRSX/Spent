@@ -10,6 +10,7 @@ import {
 import { useTranslations } from "next-intl";
 import { getActivity, getHome } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { IS_MOBILE } from "@/lib/platform";
 import {
   homeHrefForMonth,
   monthKeyFromDate,
@@ -107,6 +108,8 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
   const { data: activity } = useQuery({
     queryKey: ["activity"],
     queryFn: getActivity,
+    // Activity only feeds the scraper status pill, which the phone never shows.
+    enabled: !IS_MOBILE,
     refetchInterval: (q) => {
       const a = q.state.data;
       if (activityPopoverOpen) return 3000;
@@ -154,38 +157,44 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
       <PageHeader
         title={t("pageTitle")}
         actions={
-          <>
-            <div className="hidden md:block">{monthPicker}</div>
-            {scraperMode && (
-              <SyncStatusPill
-                items={data?.bankHealth ?? null}
-                nextScheduledSync={data?.nextScheduledSync ?? null}
-                activity={activity ?? null}
-                onOpenChange={handleActivityOpenChange}
-              />
-            )}
-            <CategorizeButton onApplied={handleSyncOrCategorizeComplete} />
-            {scraperMode ? (
-              <SyncButton
-                onComplete={handleSyncOrCategorizeComplete}
-                autoStart={autoStartSync}
-              />
-            ) : (
-              <ImportXlsxButton onComplete={handleSyncOrCategorizeComplete} />
-            )}
-          </>
+          // The phone shows only views: the month picker sits in the page body,
+          // and there is no import, scraper sync or AI categorize run.
+          IS_MOBILE ? undefined : (
+            <>
+              <div className="hidden md:block">{monthPicker}</div>
+              {scraperMode && (
+                <SyncStatusPill
+                  items={data?.bankHealth ?? null}
+                  nextScheduledSync={data?.nextScheduledSync ?? null}
+                  activity={activity ?? null}
+                  onOpenChange={handleActivityOpenChange}
+                />
+              )}
+              <CategorizeButton onApplied={handleSyncOrCategorizeComplete} />
+              {scraperMode ? (
+                <SyncButton
+                  onComplete={handleSyncOrCategorizeComplete}
+                  autoStart={autoStartSync}
+                />
+              ) : (
+                <ImportXlsxButton onComplete={handleSyncOrCategorizeComplete} />
+              )}
+            </>
+          )
         }
       />
 
       <div className="p-4 md:p-6 lg:p-8">
-        <div className="mb-4 flex justify-center md:hidden">{monthPicker}</div>
+        <div className={cn("mb-4 flex justify-center", !IS_MOBILE && "md:hidden")}>
+          {monthPicker}
+        </div>
         {scraperMode && (
           <SyncFailureBanner
             items={data?.bankHealth ?? null}
             className="mb-4 md:mb-5 lg:mb-6"
           />
         )}
-        <AINotConnectedBanner className="mb-4 md:mb-5 lg:mb-6" />
+        {!IS_MOBILE && <AINotConnectedBanner className="mb-4 md:mb-5 lg:mb-6" />}
         <div
           className={cn(
             "grid grid-cols-12 gap-4 transition-opacity md:gap-5 lg:gap-6",
@@ -196,10 +205,11 @@ export function HomePage({ dataSourceMode }: { dataSourceMode: DataSourceMode })
           {renderSection("kpis", ctx, ROW_FULL)}
           {renderSection("historicalTrend", ctx, ROW_FULL)}
           {renderSection("categoryBreakdown", ctx, ROW_MAIN)}
-          {renderSection("budgetPace", ctx, ROW_SIDE)}
+          {!IS_MOBILE && renderSection("budgetPace", ctx, ROW_SIDE)}
           {renderSection("spendingStats", ctx, ROW_MAIN)}
           {renderSection("needsAttention", ctx, ROW_SIDE)}
-          {renderSection("recentTransactions", ctx, scraperMode ? ROW_MAIN : ROW_FULL)}
+          {!IS_MOBILE &&
+            renderSection("recentTransactions", ctx, scraperMode ? ROW_MAIN : ROW_FULL)}
           {scraperMode && renderSection("bankHealth", ctx, ROW_SIDE)}
         </div>
       </div>

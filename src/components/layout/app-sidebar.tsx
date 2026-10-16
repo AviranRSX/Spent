@@ -31,6 +31,7 @@ import { SyncStatusBlock } from "@/components/phone-sync/sync-status-block";
 import { useDesktopPhoneSync } from "@/components/phone-sync/use-desktop-phone-sync";
 import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { getTrips } from "@/lib/api";
+import { IS_MOBILE } from "@/lib/platform";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface NavDef {
@@ -149,35 +150,40 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator />
+        {/* The phone has no settings: they are managed on the PC. */}
+        {!IS_MOBILE && (
+          <>
+            <SidebarSeparator />
 
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {FOOTER_NAV.map((item) => {
-                const label = t(item.labelKey);
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={
-                        <Link href={item.href}>
-                          <item.Icon />
-                          <span>{label}</span>
-                        </Link>
-                      }
-                      isActive={item.match(pathname)}
-                      tooltip={label}
-                    />
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {FOOTER_NAV.map((item) => {
+                    const label = t(item.labelKey);
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          render={
+                            <Link href={item.href}>
+                              <item.Icon />
+                              <span>{label}</span>
+                            </Link>
+                          }
+                          isActive={item.match(pathname)}
+                          tooltip={label}
+                        />
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
-        {hydrated && phoneSync.status?.enabled ? (
+        {!IS_MOBILE && hydrated && phoneSync.status?.enabled ? (
           <SyncStatusBlock
             state={
               phoneSync.isSyncing
@@ -191,23 +197,25 @@ export function AppSidebar() {
             onSync={phoneSync.sync}
           />
         ) : null}
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={
-                <a
-                  href="https://github.com/Shaya16/Spent"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Star />
-                  <span>{t("starOnGitHub")}</span>
-                </a>
-              }
-              tooltip={t("starOnGitHub")}
-            />
-          </SidebarMenuItem>
-        </SidebarMenu>
+        {!IS_MOBILE && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                render={
+                  <a
+                    href="https://github.com/Shaya16/Spent"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Star />
+                    <span>{t("starOnGitHub")}</span>
+                  </a>
+                }
+                tooltip={t("starOnGitHub")}
+              />
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

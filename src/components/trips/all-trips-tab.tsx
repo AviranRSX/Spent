@@ -8,6 +8,7 @@ import { Check, Pencil, Plane, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { updateTrip } from "@/lib/api";
+import { IS_MOBILE } from "@/lib/platform";
 import { formatTripAmount, formatTripDates, isolateLtr } from "@/lib/trips/format";
 import type { TripStatus, TripSummary, TripsOverview } from "@/lib/trips/types";
 import type { Locale } from "@/i18n/routing";
@@ -49,7 +50,8 @@ export function AllTripsTab({ overview, loading, onOpenTrip, onCreate }: AllTrip
     );
   }
 
-  const suggested = overview?.suggested ?? [];
+  // Suggestions are confirmed or dismissed on the PC, so the phone lists only confirmed trips.
+  const suggested = IS_MOBILE ? [] : (overview?.suggested ?? []);
   const confirmed = overview?.confirmed ?? [];
 
   if (suggested.length === 0 && confirmed.length === 0) {
@@ -60,10 +62,12 @@ export function AllTripsTab({ overview, loading, onOpenTrip, onCreate }: AllTrip
         </span>
         <h2 className="font-serif text-2xl tracking-tight">{t("emptyTitle")}</h2>
         <p className="max-w-md text-sm text-muted-foreground">{t("emptyBody")}</p>
-        <Button size="sm" onClick={onCreate} className="mt-2 gap-1.5">
-          <Plus className="size-3.5" aria-hidden="true" />
-          {t("newTrip")}
-        </Button>
+        {!IS_MOBILE && (
+          <Button size="sm" onClick={onCreate} className="mt-2 gap-1.5">
+            <Plus className="size-3.5" aria-hidden="true" />
+            {t("newTrip")}
+          </Button>
+        )}
       </div>
     );
   }

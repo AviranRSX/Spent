@@ -7,6 +7,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
+import { IS_MOBILE } from "@/lib/platform";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -34,7 +35,8 @@ export function PageHeader({
           <h1 className="truncate font-serif text-2xl leading-none tracking-tight">
             {title}
           </h1>
-          {meta && (
+          {/* At phone width the meta only repeats the period picker and squeezes the title. */}
+          {meta && !IS_MOBILE && (
             <>
               <span className="text-sm text-muted-foreground">·</span>
               <span className="truncate text-sm text-muted-foreground">
@@ -43,10 +45,14 @@ export function PageHeader({
             </>
           )}
         </div>
-        {actions && (
+        {actions && !IS_MOBILE && (
           <div className="flex shrink-0 items-center gap-2">{actions}</div>
         )}
       </div>
+      {/* Phone: actions get their own row so the title is never truncated. */}
+      {actions && IS_MOBILE && (
+        <div className="flex items-center justify-center gap-2 px-4 pb-2">{actions}</div>
+      )}
     </header>
   );
 }

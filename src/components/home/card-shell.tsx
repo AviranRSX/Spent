@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { IS_MOBILE } from "@/lib/platform";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface CardShellProps {
@@ -42,7 +43,10 @@ export function CardAction({ href, children }: { href: string; children: ReactNo
   return (
     <Link
       href={href}
-      className="underline-offset-4 hover:text-foreground hover:underline"
+      className={cn(
+        "underline-offset-4 hover:text-foreground hover:underline",
+        IS_MOBILE && "inline-flex min-h-11 items-center"
+      )}
     >
       {children}
     </Link>

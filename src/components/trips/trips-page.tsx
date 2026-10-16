@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsHydrated } from "@/hooks/use-is-hydrated";
 import { detectTrips, getTrips } from "@/lib/api";
+import { IS_MOBILE } from "@/lib/platform";
 import { AllTripsTab } from "./all-trips-tab";
 import { NeedsTripTab } from "./needs-trip-tab";
 import { TripDetailTab } from "./trip-detail";
@@ -39,8 +40,9 @@ export function TripsPage() {
       if (result.created > 0) invalidateTrips();
     },
   });
+  // Detection creates suggested trips, a write the phone leaves to the PC.
   useEffect(() => {
-    runDetection();
+    if (!IS_MOBILE) runDetection();
   }, [runDetection]);
 
   // The sidebar shares this query and can fill the cache before this boundary
@@ -73,10 +75,12 @@ export function TripsPage() {
       <PageHeader
         title={t("pageTitle")}
         actions={
-          <Button size="sm" onClick={() => setCreating(true)} className="gap-1.5">
-            <Plus className="size-3.5" aria-hidden="true" />
-            {t("newTrip")}
-          </Button>
+          IS_MOBILE ? undefined : (
+            <Button size="sm" onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="size-3.5" aria-hidden="true" />
+              {t("newTrip")}
+            </Button>
+          )
         }
       />
 
@@ -124,7 +128,7 @@ export function TripsPage() {
         </Tabs>
       </div>
 
-      {creating ? (
+      {!IS_MOBILE && creating ? (
         <TripFormDialog
           onClose={() => setCreating(false)}
           onSaved={(trip) => {

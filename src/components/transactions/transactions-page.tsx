@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
+import { IS_MOBILE } from "@/lib/platform";
 import { KpiCards } from "./kpi-cards";
 import { WidgetsRow } from "./widgets-row";
 import {
@@ -197,7 +198,7 @@ export function TransactionsPage() {
       />
 
       <div className="space-y-6 p-4 md:p-6 lg:p-8">
-        <AINotConnectedBanner />
+        {!IS_MOBILE && <AINotConnectedBanner />}
         <KpiCards summary={summaryQuery.data} loading={summaryInitialLoading} />
 
         <WidgetsRow
@@ -227,11 +228,11 @@ export function TransactionsPage() {
                     setPage(0);
                     setCategoryFilter([]);
                   }}
-                  className={
+                  className={`${
                     active
                       ? "rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-colors"
                       : "rounded-full px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  }
+                  }${IS_MOBILE ? " min-h-11" : ""}`}
                 >
                   {opt.label}
                 </button>

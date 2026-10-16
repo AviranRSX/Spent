@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { CardShell } from "./card-shell";
+import { IS_MOBILE } from "@/lib/platform";
 import { formatCurrency } from "@/lib/formatters";
 import {
   buildSelectableSpendingStats,
@@ -160,7 +161,7 @@ function MonthSelector({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-3 h-2 w-full accent-foreground disabled:opacity-40"
+        className={`mt-3 w-full accent-foreground disabled:opacity-40 ${IS_MOBILE ? "h-11" : "h-2"}`}
         aria-label={t("statsWindow")}
       />
       <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">

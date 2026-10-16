@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { CategoryCard } from "./category-card";
 import { BudgetDetailSheet } from "./budget-detail-sheet";
+import { IS_MOBILE } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -190,9 +192,20 @@ export function CategoryGrid({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            "flex items-center gap-3",
+            // Phone: heading on its own line, chips in one row that scrolls sideways.
+            IS_MOBILE && "w-full min-w-0 flex-col items-start"
+          )}
+        >
           <h2 className="font-serif text-2xl">{t("budgetsHeading")}</h2>
-          <div className="flex flex-wrap gap-1.5">
+          <div
+            className={cn(
+              "flex gap-1.5",
+              IS_MOBILE ? "-mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 pb-1" : "flex-wrap"
+            )}
+          >
             {filterLabels.map((f) => {
               const active = filter === f.id;
               const count = counts[f.id];
@@ -200,7 +213,7 @@ export function CategoryGrid({
                 <button
                   key={f.id}
                   onClick={() => setFilter(f.id)}
-                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  className={`inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${IS_MOBILE ? "min-h-11 px-4" : ""} transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                     active
                       ? "bg-foreground text-background shadow-sm"
                       : "bg-muted text-foreground/70 hover:bg-secondary hover:text-foreground"
@@ -239,7 +252,13 @@ export function CategoryGrid({
           {t("noMatchingFilter")}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div
+          className={cn(
+            "grid gap-4 md:grid-cols-2 lg:grid-cols-3",
+            // minmax(0, 1fr) keeps long card text from widening the column past the screen.
+            IS_MOBILE && "grid-cols-1"
+          )}
+        >
           {filtered.map((c) => (
             <CategoryCard
               key={c.categoryId}

@@ -10,6 +10,7 @@ import { HeroCard } from "./hero-card";
 import { CategoryGrid } from "./category-grid";
 import { PeriodSelector } from "./period-selector";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
+import { IS_MOBILE } from "@/lib/platform";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { CategoryViewMode } from "@/lib/types";
 import type { Locale } from "@/i18n/routing";
@@ -70,7 +71,7 @@ export function Dashboard() {
       />
 
       <div className="space-y-6 p-4 md:p-6 lg:p-8">
-        <AINotConnectedBanner />
+        {!IS_MOBILE && <AINotConnectedBanner />}
         <HeroCard
           data={summary}
           loading={summaryQuery.isLoading}

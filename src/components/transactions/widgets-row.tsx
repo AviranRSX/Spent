@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { ArrowDownRight, ArrowUpRight, HelpCircle } from "lucide-react";
 import type { TransactionsSummary } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
+import { IS_MOBILE } from "@/lib/platform";
 import type { Locale } from "@/i18n/routing";
 
 interface WidgetsRowProps {
@@ -136,7 +137,7 @@ function PendingReview({ count, loading, onReviewNow }: PendingReviewProps) {
         type="button"
         onClick={onReviewNow}
         disabled={loading || count === 0}
-        className="mt-3 inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+        className={`mt-3 inline-flex items-center justify-center rounded-md border border-border px-3 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 ${IS_MOBILE ? "h-11" : "h-8"}`}
       >
         {t("reviewNow")}
       </button>

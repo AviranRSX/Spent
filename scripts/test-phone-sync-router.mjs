@@ -91,6 +91,51 @@ test("missing workspace header falls back to lowest id", async () => {
   }
 });
 
+// GETs the five phone screens and the sidebar make once desktop-only controls
+// are hidden. Built from the src/lib/api.ts callers on those screens.
+test("every GET used by phone screens is routed", async () => {
+  const headers = { "x-workspace-id": String(workspaceId) };
+  const get = (url) => handleMobileRequest(url, { headers });
+  const categories = await (await get("/api/categories")).json();
+  const overview = await (await get("/api/trips")).json();
+  const tripId = overview.confirmed[0].id;
+  const txns = await (await get("/api/transactions?limit=5")).json();
+  const ids = txns.transactions.map((t) => `ids=${t.id}`).join("&");
+  const range = "from=2026-01-01&to=2026-12-31";
+
+  const paths = [
+    // Sidebar and workspace switcher.
+    "/api/workspaces",
+    "/api/trips",
+    // Home.
+    "/api/home?month=2026-03",
+    // Budget.
+    `/api/summary?${range}`,
+    "/api/categories",
+    `/api/categories/${categories[0].id}/detail?${range}`,
+    // Transactions and Credit card.
+    `/api/transactions?${range}&limit=50&offset=0&sort=date&order=desc`,
+    `/api/transactions?${range}&limit=50&offset=0&sourceType=card&needsReview=true`,
+    `/api/transactions/summary?${range}`,
+    `/api/transactions/summary?${range}&sourceType=card`,
+    `/api/transactions/account-numbers?${range}&sourceType=card`,
+    `/api/summary?${range}&sourceType=card`,
+    "/api/categories?kind=income",
+    "/api/categories?kind=expense",
+    "/api/integrations",
+    `/api/trips/memberships?${ids}`,
+    // Trips.
+    `/api/trips/${tripId}`,
+    "/api/trips/needs-trip",
+  ];
+  const failures = [];
+  for (const p of paths) {
+    const res = await get(p);
+    if (res.status !== 200) failures.push(`${p} -> ${res.status}`);
+  }
+  assert.deepEqual(failures, []);
+});
+
 test("exportDatabase returns sqlite bytes", () => {
   const bytes = sqljsDb.exportDatabase();
   assert.equal(new TextDecoder().decode(bytes.slice(0, 15)), "SQLite format 3");

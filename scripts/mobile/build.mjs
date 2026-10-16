@@ -13,6 +13,7 @@ import {
   cpSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -80,6 +81,28 @@ try {
   removeShadow();
 }
 if (process.exitCode) process.exit(process.exitCode);
+
+// Next 16 writes a nested route's segment prefetch payloads into a folder
+// (budget/__next.budget/__PAGE__.txt) but the client router requests them as
+// one dotted file name (budget/__next.budget.__PAGE__.txt). Without a server
+// to map one to the other every link prefetch 404s, so add the dotted copies.
+function flattenSegmentPayloads(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "_next") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.name.startsWith("__next.")) {
+      for (const file of readdirSync(full, { recursive: true, withFileTypes: true })) {
+        if (!file.isFile()) continue;
+        const rel = path.relative(full, path.join(file.parentPath, file.name));
+        const flat = `${entry.name}.${rel.split(path.sep).join(".")}`;
+        copyFileSync(path.join(file.parentPath, file.name), path.join(dir, flat));
+      }
+    } else {
+      flattenSegmentPayloads(full);
+    }
+  }
+}
+flattenSegmentPayloads(outDir);
 
 copyFileSync(
   path.join(root, "node_modules", "sql.js", "dist", "sql-wasm.wasm"),

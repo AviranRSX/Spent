@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { AlertTriangle, CircleHelp, Flag, Plane, type LucideIcon } from "lucide-react";
 import { CardShell } from "./card-shell";
+import { IS_MOBILE } from "@/lib/platform";
 import {
   buildNeedsAttentionRows,
   type NeedsAttentionRowId,
@@ -85,7 +86,7 @@ function Row({
     <li>
       <Link
         href={href}
-        className="group flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors hover:bg-accent/50"
+        className={`group flex items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors hover:bg-accent/50${IS_MOBILE ? " min-h-11" : ""}`}
       >
         <span className="flex items-center gap-2.5">
           <span className="text-foreground/80">{icon}</span>

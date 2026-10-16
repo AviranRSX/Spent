@@ -22,6 +22,7 @@ import {
   updateTransactionCategory,
 } from "@/lib/api";
 import { groupCategoryOptions } from "@/lib/category-options";
+import { IS_MOBILE } from "@/lib/platform";
 import { translateCategoryName } from "@/lib/i18n-data";
 import type { TripMember } from "@/lib/trips/types";
 import type { Category } from "@/lib/types";
@@ -73,7 +74,10 @@ export function TripMemberCategoryPicker({ tripId, member }: TripMemberCategoryP
       if (left) {
         toast(t("detail.categoryChangedLeftToast", { category: name }), {
           duration: 10000,
-          action: { label: t("detail.keepInTrip"), onClick: () => keepInTrip.mutate() },
+          // Keeping a row in the trip is an assignment, which the phone leaves to the PC.
+          action: IS_MOBILE
+            ? undefined
+            : { label: t("detail.keepInTrip"), onClick: () => keepInTrip.mutate() },
         });
       } else {
         toast.success(t("detail.categoryChangedToast", { category: name }));

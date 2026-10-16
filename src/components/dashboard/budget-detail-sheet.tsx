@@ -65,6 +65,7 @@ import {
 } from "@/lib/api";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import { Switch } from "@/components/ui/switch";
+import { IS_MOBILE } from "@/lib/platform";
 import type { Category, TransactionWithCategory } from "@/lib/types";
 import type { CategoryChildBreakdown } from "@/lib/api";
 
@@ -120,7 +121,10 @@ export function BudgetDetailSheet({
     >
       <SheetContent
         side="right"
-        className="w-full p-0 sm:max-w-xl! md:max-w-2xl! lg:max-w-[35vw]!"
+        className={`w-full p-0 sm:max-w-xl! md:max-w-2xl! lg:max-w-[35vw]!${
+          // The sheet's default 3/4 width squeezes rows at phone width.
+          IS_MOBILE ? " data-[side=right]:w-full" : ""
+        }`}
       >
         {detailQuery.isLoading || !detailQuery.data ? (
           <DetailSkeleton />
@@ -222,7 +226,8 @@ function DetailContent({ data }: { data: CategoryDetail }) {
               {data.category.name}
             </SheetTitle>
           </div>
-          {data.category.kind !== "income" && (
+          {/* Budgets are edited on the PC; the phone only recategorizes and approves. */}
+          {!IS_MOBILE && data.category.kind !== "income" && (
             <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
               <span>Budget</span>
               <Switch
@@ -255,11 +260,19 @@ function DetailContent({ data }: { data: CategoryDetail }) {
           <>
             <div className="mt-2 grid grid-cols-3 gap-3">
               <Stat label="Spent" value={formatCurrency(data.spent)} />
-              <BudgetStat
-                amount={data.budget}
-                isAuto={data.isAutoBudget}
-                onSave={handleSaveBudget}
-              />
+              {IS_MOBILE ? (
+                <Stat
+                  label="Budget"
+                  value={data.budget > 0 ? formatCurrency(data.budget) : "–"}
+                  sublabel={data.isAutoBudget && data.budget > 0 ? "auto" : undefined}
+                />
+              ) : (
+                <BudgetStat
+                  amount={data.budget}
+                  isAuto={data.isAutoBudget}
+                  onSave={handleSaveBudget}
+                />
+              )}
               <Stat
                 label="Left"
                 value={formatCurrency(Math.max(0, data.budget - data.spent))}
@@ -397,15 +410,17 @@ function DetailContent({ data }: { data: CategoryDetail }) {
             <h3 className="text-sm font-medium">
               Transactions · {data.transactionCount}
             </h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 gap-1 text-xs"
-              disabled
-              title="Manual transaction entry not available yet"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add
-            </Button>
+            {!IS_MOBILE && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 gap-1 text-xs"
+                disabled
+                title="Manual transaction entry not available yet"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add
+              </Button>
+            )}
           </div>
           <div className="overflow-hidden rounded-2xl border bg-card">
             {data.transactions.length === 0 ? (

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/formatters";
+import { IS_MOBILE } from "@/lib/platform";
 import { translateCategoryName } from "@/lib/i18n-data";
 import type { DashboardSummary } from "@/lib/types";
 import type { Locale } from "@/i18n/routing";
@@ -149,7 +150,8 @@ export function HeroCard({ data, loading, monthLabel }: HeroCardProps) {
           </div>
         </div>
       )}
-      {!hasBudget && (
+      {/* The monthly target is set in PC settings, which the phone does not have. */}
+      {!hasBudget && !IS_MOBILE && (
         <div className="pt-1">
           <Link
             href="/settings/general#section-monthly-target"

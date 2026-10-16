@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { assignTransactionsToTrip, getNeedsTrip } from "@/lib/api";
 import { LOCAL_CURRENCY } from "@/lib/currency";
+import { IS_MOBILE } from "@/lib/platform";
 import { translateCategoryName } from "@/lib/i18n-data";
 import { toDay } from "@/lib/trips/dates";
 import { draftTripFromTransactions } from "@/lib/trips/draft";
@@ -182,50 +183,53 @@ export function NeedsTripTab() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-1.5 ps-[4.25rem] lg:shrink-0 lg:justify-end lg:ps-0">
-                        {item.suggestions.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">{t("needs.noSuggestions")}</span>
-                        ) : (
-                          item.suggestions.slice(0, MAX_CHIPS).map((trip) => (
-                            <button
-                              key={trip.id}
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                assignMutation.mutate({
-                                  transactionId: txn.id,
-                                  tripId: trip.id,
-                                  tripName: trip.name,
-                                })
-                              }
-                              title={formatTripDates(trip.startDate, trip.endDate, locale)}
-                              className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                            >
-                              <Plane className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                              <span className="truncate">{trip.name}</span>
-                            </button>
-                          ))
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => setCreatingFor(item)}
-                          className="gap-1.5 rounded-full"
-                        >
-                          <Plus className="size-3.5" aria-hidden="true" />
-                          {t("newTripEllipsis")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => assignMutation.mutate({ transactionId: txn.id, tripId: null })}
-                          className="rounded-full text-muted-foreground"
-                        >
-                          {t("needs.notATrip")}
-                        </Button>
-                      </div>
+                      {/* Assigning a trip is a PC-only write; the phone lists the queue read-only. */}
+                      {!IS_MOBILE && (
+                        <div className="flex flex-wrap items-center gap-1.5 ps-[4.25rem] lg:shrink-0 lg:justify-end lg:ps-0">
+                          {item.suggestions.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">{t("needs.noSuggestions")}</span>
+                          ) : (
+                            item.suggestions.slice(0, MAX_CHIPS).map((trip) => (
+                              <button
+                                key={trip.id}
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  assignMutation.mutate({
+                                    transactionId: txn.id,
+                                    tripId: trip.id,
+                                    tripName: trip.name,
+                                  })
+                                }
+                                title={formatTripDates(trip.startDate, trip.endDate, locale)}
+                                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-border bg-background px-3 text-xs font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                              >
+                                <Plane className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                <span className="truncate">{trip.name}</span>
+                              </button>
+                            ))
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => setCreatingFor(item)}
+                            className="gap-1.5 rounded-full"
+                          >
+                            <Plus className="size-3.5" aria-hidden="true" />
+                            {t("newTripEllipsis")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => assignMutation.mutate({ transactionId: txn.id, tripId: null })}
+                            className="rounded-full text-muted-foreground"
+                          >
+                            {t("needs.notATrip")}
+                          </Button>
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -251,7 +255,7 @@ export function NeedsTripTab() {
         </div>
       )}
 
-      {creatingFor ? (
+      {!IS_MOBILE && creatingFor ? (
         <TripFormDialog
           initial={draftTripFromTransactions([creatingFor.transaction], {
             locale,

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { deleteTrip } from "@/lib/api";
 import { formatTripDates } from "@/lib/trips/format";
+import { IS_MOBILE } from "@/lib/platform";
 import type { Trip } from "@/lib/trips/types";
 import type { Locale } from "@/i18n/routing";
 import { TripFormDialog } from "./trip-form-dialog";
@@ -69,22 +70,25 @@ export function TripHeader({ trip, days, onDeleted, actions }: TripHeaderProps) 
             </span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {actions}
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1.5">
-            <Pencil className="size-3.5" aria-hidden="true" />
-            {t("edit")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setConfirmingDelete(true)}
-            className="gap-1.5 text-destructive hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-            {t("delete")}
-          </Button>
-        </div>
+        {/* Trips are edited and deleted on the PC only. */}
+        {!IS_MOBILE && (
+          <div className="flex flex-wrap items-center gap-2">
+            {actions}
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1.5">
+              <Pencil className="size-3.5" aria-hidden="true" />
+              {t("edit")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmingDelete(true)}
+              className="gap-1.5 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="size-3.5" aria-hidden="true" />
+              {t("delete")}
+            </Button>
+          </div>
+        )}
       </div>
 
       {editing ? (

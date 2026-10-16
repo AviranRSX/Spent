@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { listWorkspaces } from "@/lib/api";
+import { IS_MOBILE } from "@/lib/platform";
 import {
   setActiveWorkspaceId,
   useActiveWorkspaceId,
@@ -105,21 +106,26 @@ export function WorkspaceSwitcher() {
                 ) : null}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => router.push("/setup?mode=new-workspace")}
-              className="gap-2"
-            >
-              <Plus className="size-4" />
-              New workspace
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => router.push("/settings#workspace")}
-              className="gap-2"
-            >
-              <Settings2 className="size-4" />
-              Manage workspaces
-            </DropdownMenuItem>
+            {/* Workspaces are created and managed on the PC only. */}
+            {!IS_MOBILE && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => router.push("/setup?mode=new-workspace")}
+                  className="gap-2"
+                >
+                  <Plus className="size-4" />
+                  New workspace
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => router.push("/settings#workspace")}
+                  className="gap-2"
+                >
+                  <Settings2 className="size-4" />
+                  Manage workspaces
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

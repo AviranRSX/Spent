@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { CreditCard, HelpCircle, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { AINotConnectedBanner } from "@/components/ai-not-connected-banner";
+import { IS_MOBILE } from "@/lib/platform";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { TransactionsTable } from "@/components/dashboard/transactions-table";
 import { KpiCards } from "@/components/transactions/kpi-cards";
@@ -187,7 +188,7 @@ export function CreditCardPage() {
       />
 
       <div className="space-y-6 p-4 md:p-6 lg:p-8">
-        <AINotConnectedBanner />
+        {!IS_MOBILE && <AINotConnectedBanner />}
         <KpiCards summary={summaryQuery.data} loading={summaryInitialLoading} />
 
         <WidgetsRow
@@ -226,11 +227,11 @@ export function CreditCardPage() {
                     setPage(0);
                     setCategoryFilter([]);
                   }}
-                  className={
+                  className={`${
                     active
                       ? "rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-colors"
                       : "rounded-full px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  }
+                  }${IS_MOBILE ? " min-h-11" : ""}`}
                 >
                   {opt.label}
                 </button>

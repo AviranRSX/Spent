@@ -1,6 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { IS_MOBILE } from "@/lib/platform";
+import { cn } from "@/lib/utils";
 
 interface PeriodSelectorProps {
   label: string;
@@ -44,7 +46,12 @@ export function PeriodSelector({
           />
         </svg>
       </Button>
-      <span className="min-w-[120px] text-center text-sm font-medium tabular-nums">
+      <span
+        className={cn(
+          "text-center text-sm font-medium tabular-nums",
+          IS_MOBILE ? "whitespace-nowrap px-1" : "min-w-[120px]"
+        )}
+      >
         {label}
       </span>
       <Button

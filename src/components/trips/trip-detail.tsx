@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { assignTransactionsToTrip, getTripDetail } from "@/lib/api";
 import { formatTripAmount } from "@/lib/trips/format";
 import { buildTripTransactionsHref } from "@/lib/trips/range-link";
+import { IS_MOBILE } from "@/lib/platform";
 import type { Locale } from "@/i18n/routing";
 import { TripCategoryBreakdown } from "./trip-category-breakdown";
 import { TripDailyChart } from "./trip-daily-chart";
@@ -82,13 +83,16 @@ export function TripDetailTab({ tripId, onDeleted }: TripDetailTabProps) {
         days={detail.days}
         onDeleted={onDeleted}
         actions={
-          <>
-            <RecategorizeTravelButton
-              tripId={detail.trip.id}
-              count={detail.travelRecategorizableCount}
-            />
-            {addLink}
-          </>
+          // AI recategorize and adding members are PC-only writes.
+          IS_MOBILE ? undefined : (
+            <>
+              <RecategorizeTravelButton
+                tripId={detail.trip.id}
+                count={detail.travelRecategorizableCount}
+              />
+              {addLink}
+            </>
+          )
         }
       />
 
@@ -122,7 +126,7 @@ export function TripDetailTab({ tripId, onDeleted }: TripDetailTabProps) {
       <TripMemberList
         tripId={detail.trip.id}
         members={detail.members}
-        onRemove={(id) => removeMutation.mutate(id)}
+        onRemove={IS_MOBILE ? undefined : (id) => removeMutation.mutate(id)}
         removingId={removeMutation.isPending ? (removeMutation.variables ?? null) : null}
       />
     </div>

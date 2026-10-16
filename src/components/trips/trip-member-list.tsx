@@ -17,7 +17,8 @@ import { TripMemberCategoryPicker } from "./trip-member-category-picker";
 interface TripMemberListProps {
   tripId: number;
   members: TripMember[];
-  onRemove: (id: number) => void;
+  /** Omitted on the phone, where trip membership is read-only. */
+  onRemove?: (id: number) => void;
   removingId: number | null;
 }
 
@@ -65,7 +66,7 @@ function MemberGroup({
   tripId: number;
   title: string;
   rows: TripMember[];
-  onRemove: (id: number) => void;
+  onRemove?: (id: number) => void;
   removingId: number | null;
 }) {
   const t = useTranslations("trips");
@@ -118,17 +119,19 @@ function MemberGroup({
                   </div>
                 ) : null}
               </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground"
-                onClick={() => onRemove(row.id)}
-                disabled={removingId === row.id}
-                aria-label={t("detail.remove")}
-                title={t("detail.remove")}
-              >
-                <X className="size-4" aria-hidden="true" />
-              </Button>
+              {onRemove ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground"
+                  onClick={() => onRemove(row.id)}
+                  disabled={removingId === row.id}
+                  aria-label={t("detail.remove")}
+                  title={t("detail.remove")}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </Button>
+              ) : null}
             </li>
           );
         })}

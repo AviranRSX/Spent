@@ -30,6 +30,10 @@ const INCOME_COLOR = "var(--chart-income)";
 const EXPENSE_COLOR = "var(--chart-expense)";
 const NET_COLOR = "var(--foreground)";
 const DIMMED_OPACITY = 0.45;
+// Recharts defers mousemove to the next frame by default, but onClick reads the
+// hovered month right away. A tap fires mousemove and click back to back, so the
+// click would get the previously tapped month. Handle mousemove immediately.
+const CHART_THROTTLED_EVENTS = ["touchmove", "pointermove", "scroll", "wheel"] as const;
 
 interface Props {
   data: HomeHistoricalTrendPoint[];
@@ -67,6 +71,7 @@ export function CashFlowChartCard({ data, onSelectMonth }: Props) {
               margin={{ top: 8, right: 4, bottom: 0, left: 4 }}
               barGap={2}
               barCategoryGap="24%"
+              throttledEvents={CHART_THROTTLED_EVENTS}
               onClick={(state: MouseHandlerDataParam) => {
                 if (typeof state.activeLabel === "string") {
                   onSelectMonth(state.activeLabel);

@@ -853,7 +853,7 @@ Depends on the Task 3 gate passing.
   - Add a sentence in "Why Spent?" or "Security at a glance" saying that phone sync is opt-in and only uploads an encrypted file to your own Drive.
 
 - [ ] **Step 1:** Write the docs. Read each against the build commands actually used in Tasks 13 and 14.
-- [ ] **Step 2:** Run `grep -nP "x{2014}" docs/phone-app.md AGENTS.md CLAUDE.md SECURITY.md README.md`. Expected: no output.
+- [ ] **Step 2:** Run `grep -nP "\x{2014}" docs/phone-app.md AGENTS.md CLAUDE.md SECURITY.md README.md`. Expected: no output.
 - [ ] **Step 3:** Run `npm run security:sensitive-data`. Expected: no findings.
 - [ ] **Step 4:** Commit: `docs: document the Android companion app and the APK rebuild rule`.
 

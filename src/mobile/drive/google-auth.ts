@@ -7,10 +7,13 @@ export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 
 const WEB_CLIENT_ID = process.env.NEXT_PUBLIC_SPENT_GOOGLE_WEB_CLIENT_ID ?? "";
 
-let ready: Promise<SocialLoginPlugin> | null = null;
+// Wrapped in an object: a Capacitor plugin is a proxy that answers every
+// property, `then` included, so a promise resolved with the plugin itself
+// never settles.
+let ready: Promise<{ plugin: SocialLoginPlugin }> | null = null;
 let cachedToken: string | null = null;
 
-function socialLogin(): Promise<SocialLoginPlugin> {
+function socialLogin(): Promise<{ plugin: SocialLoginPlugin }> {
   if (!ready) {
     ready = (async () => {
       if (!WEB_CLIENT_ID) {
@@ -20,7 +23,7 @@ function socialLogin(): Promise<SocialLoginPlugin> {
       }
       const { SocialLogin } = await import("@capgo/capacitor-social-login");
       await SocialLogin.initialize({ google: { webClientId: WEB_CLIENT_ID, mode: "online" } });
-      return SocialLogin;
+      return { plugin: SocialLogin };
     })();
     ready.catch(() => {
       ready = null;
@@ -35,7 +38,7 @@ function isOffline(): boolean {
 
 /** Interactive sign-in. Asks for the Drive scope and returns the account email. */
 export async function signIn(): Promise<{ email: string }> {
-  const plugin = await socialLogin();
+  const { plugin } = await socialLogin();
   const { result } = await plugin.login({
     provider: "google",
     options: { scopes: [DRIVE_SCOPE] },
@@ -57,7 +60,7 @@ export async function getAccessToken(options: { forceRefresh?: boolean } = {}): 
   if (cachedToken && !options.forceRefresh) return cachedToken;
   cachedToken = null;
 
-  const plugin = await socialLogin();
+  const { plugin } = await socialLogin();
   const refresh = () =>
     plugin.refresh({ provider: "google", options: { scopes: [DRIVE_SCOPE] } });
   try {
@@ -79,7 +82,7 @@ export async function getAccessToken(options: { forceRefresh?: boolean } = {}): 
 export async function signOut(): Promise<void> {
   cachedToken = null;
   try {
-    const plugin = await socialLogin();
+    const { plugin } = await socialLogin();
     await plugin.logout({ provider: "google" });
   } catch {
     // Already signed out, or never configured: nothing to undo.

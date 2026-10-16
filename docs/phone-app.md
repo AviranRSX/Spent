@@ -97,7 +97,13 @@ No billing account is needed.
 4. Contact information: your email. Agree to the policy and click **Create**.
 5. Go to **Data Access** (or the **Scopes** step), click **Add or remove scopes**, and add `https://www.googleapis.com/auth/drive` (listed as "See, edit, create, and delete all of your Google Drive files"). Save.
    - Spent needs the full Drive scope because it reads a folder that Drive for desktop created and that may be shared with you by another account.
-6. Go to **Audience** and click **Publish app**, then confirm. The publishing status should now read **In production**.
+6. Go back to **Branding** and fill in the fields Google requires before it lets you publish, then click **Save**:
+   - **Application home page:** `https://shaya16.github.io/Spent/`
+   - **Application privacy policy link:** `https://shaya16.github.io/Spent/security-and-privacy/`
+   - **Authorized domains:** add `shaya16.github.io`.
+   - Any public page you control works too (for example your fork's GitHub page). The domain of both links must be listed under **Authorized domains**.
+7. Go to **Audience** and click **Publish app**, then confirm. The publishing status should now read **In production**.
+   - If **Publish app** is grey, hover over it. "Valid app name, support email, homepage url, and privacy policy url are required" means a field from step 6 is missing or was not saved.
 
 Why production: while an app is in **Testing**, Google expires its sign-ins after 7 days, so the phone would ask you to sign in again every week. In production it does not.
 

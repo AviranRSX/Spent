@@ -129,7 +129,7 @@ Hidden on the phone: budget amount and budget mode edits, transaction kind chang
 
 ### Phone changes (phone to PC)
 
-- Each phone install has a random device ID and a display name (default "Phone", editable at setup, for example "Aviran" or "Wife").
+- Each phone install has a random device ID and a display name (default "Phone", editable at setup, for example "Dana's phone" or "Phone 2").
 - **Outbox.** Each edit becomes an entry with:
   - a per-device sequence number;
   - workspace ID;

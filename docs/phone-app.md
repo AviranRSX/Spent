@@ -378,10 +378,12 @@ The **Phones** table shows one line per phone when that phone's change file coul
 | Message | Cause | Fix |
 | --- | --- | --- |
 | Can't read this phone's changes: passphrase differs | The phone encrypted its changes with another passphrase, usually right after a passphrase change. | Enter the new passphrase on that phone ([step 11](#11-changing-the-passphrase)). |
-| Can't read this phone's changes: file is damaged | The change file is incomplete or corrupt, often because Drive for desktop had not finished downloading it. | Wait a few minutes. The PC retries every 2 minutes, and the phone rewrites the file after its next edit or the next time the app opens. |
+| Can't read this phone's changes: file is damaged | The change file is incomplete or corrupt, often because Drive for desktop had not finished downloading it. | Wait a few minutes. The PC checks every 2 minutes and reads the file again once it changes, and the phone rewrites the file after its next edit or the next time the app opens. **Sync now** also retries it. |
 | Can't read this phone's changes: update Spent on the PC | The phone app is newer than Spent on the PC and wrote a format the PC does not know. | Update Spent on the PC. |
 | Couldn't apply this phone's changes | The file decrypted but applying it failed. The service log has the details. | Retry with **Sync now**. If it persists, check the service log. |
-| Couldn't read this phone's changes | Any other failure reading the file. | Retry. Check the service log. |
+| Couldn't read this phone's changes | Any other failure reading the file. | Retry with **Sync now**. Check the service log. |
+
+A change file that failed is not read again on every 2-minute check. The PC retries it when the file changes, when you change the passphrase on the PC, when you click **Sync now**, or after the service restarts.
 
 ### On the phone
 

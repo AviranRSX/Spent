@@ -79,6 +79,15 @@ export function setPhoneSyncPassphrase(passphrase: string): void {
   setGlobalSetting(PASSPHRASE_KEYS.authTag, authTag.toString("hex"));
 }
 
+/**
+ * Changes whenever the passphrase is set again (the stored ciphertext uses a
+ * fresh IV), so callers can tell that a retry with the new passphrase is due.
+ * Not secret: it is the value already stored in settings.
+ */
+export function getPhoneSyncPassphraseStamp(): string | null {
+  return getGlobalSetting(PASSPHRASE_KEYS.encrypted);
+}
+
 export function getPhoneSyncPassphrase(): string | null {
   const encrypted = getGlobalSetting(PASSPHRASE_KEYS.encrypted);
   const iv = getGlobalSetting(PASSPHRASE_KEYS.iv);

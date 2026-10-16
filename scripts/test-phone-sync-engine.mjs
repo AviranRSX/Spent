@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
@@ -345,6 +353,83 @@ test("local change triggers debounce", async () => {
 
   engine.stopPhoneSync();
   assert.equal(globalThis._phoneSync?.scheduler ?? null, null);
+});
+
+test("an unreadable change file is not retried or re-snapshotted every poll", async () => {
+  const folder = newFolder();
+  const deviceId = "device-stale-01";
+  const phonePassphrase = "synthetic-phone-old-pass";
+  const filePath = path.join(folder, changeFileName(deviceId));
+  writeFileSync(
+    filePath,
+    await encryptPayload(
+      encodeChangeFile({
+        formatVersion: 1,
+        deviceId,
+        deviceName: "Synthetic Phone",
+        changes: [changeEntry(1, transactionIds[5], categoryIds.Restaurants)],
+      }),
+      phonePassphrase
+    )
+  );
+  const snapshotPath = path.join(folder, SNAPSHOT_FILE);
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args.join(" "));
+  const settle = async (before) => {
+    await waitFor(() => engine.getPhoneSyncStatus().lastSyncedAt !== before);
+    await waitFor(() => !globalThis._phoneSync.running);
+  };
+  try {
+    await engine.initPhoneSync({ clock: fakeClock() });
+    assert.deepEqual(logged, [
+      `[phone-sync] change file for device ${deviceId} failed: bad_passphrase`,
+    ]);
+    assert.ok(existsSync(snapshotPath));
+
+    // Same file, same passphrase: the poll does not sync, and a sync from
+    // elsewhere neither re-reads the file nor rewrites the snapshot.
+    rmSync(snapshotPath);
+    const quiet = engine.getPhoneSyncStatus().lastSyncedAt;
+    engine.checkChangeFiles();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(engine.getPhoneSyncStatus().lastSyncedAt, quiet);
+    await engine.runPhoneSync();
+    await engine.runPhoneSync();
+    assert.equal(logged.length, 1);
+    assert.equal(existsSync(snapshotPath), false);
+
+    // The file changes: retried once, still nothing new to snapshot.
+    const touched = new Date(Date.now() + 5_000);
+    utimesSync(filePath, touched, touched);
+    let before = engine.getPhoneSyncStatus().lastSyncedAt;
+    engine.checkChangeFiles();
+    await settle(before);
+    assert.equal(logged.length, 2);
+    assert.equal(existsSync(snapshotPath), false);
+    await engine.runPhoneSync();
+    assert.equal(logged.length, 2);
+
+    // The Sync button retries it.
+    await engine.syncPhoneNow();
+    assert.equal(logged.length, 3);
+    assert.equal(existsSync(snapshotPath), false);
+
+    // The PC passphrase changes to the one the phone used: retried and applied.
+    settings.setPhoneSyncPassphrase(phonePassphrase);
+    before = engine.getPhoneSyncStatus().lastSyncedAt;
+    engine.checkChangeFiles();
+    await settle(before);
+    assert.equal(logged.length, 3);
+    const device = listDevices().find((d) => d.deviceId === deviceId);
+    assert.equal(device.appliedCount, 1);
+    assert.equal(device.lastError, null);
+    assert.ok(existsSync(snapshotPath));
+  } finally {
+    console.error = originalError;
+    engine.stopPhoneSync();
+    settings.setPhoneSyncPassphrase(PASSPHRASE);
+  }
 });
 
 test("folder error matching respects the path separator boundary", () => {

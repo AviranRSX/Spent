@@ -8,7 +8,7 @@ import {
   getGlobalSetting,
   setGlobalSetting,
 } from "@/server/db/queries/settings";
-import { decodeChangeFile } from "@/lib/phone-sync/changes";
+import { decodeChangeFile, type ChangeFile } from "@/lib/phone-sync/changes";
 import {
   PhoneSyncCryptoError,
   decryptPayload,
@@ -22,11 +22,17 @@ import {
 import type { PhoneSyncError, PhoneSyncStatus } from "@/lib/types";
 import { applyChangeFile } from "./apply-changes";
 import { ensureDevice, getAcks, getDevice, listDevices, recordDeviceError } from "./devices";
-import { checkFolder, listChangeFiles, writeSnapshotAtomic } from "./folder";
+import {
+  checkFolder,
+  listChangeFiles,
+  writeSnapshotAtomic,
+  type ChangeFileEntry,
+} from "./folder";
 import {
   PHONE_SYNC_STATUS_KEYS,
   getPhoneSyncConfig,
   getPhoneSyncPassphrase,
+  getPhoneSyncPassphraseStamp,
 } from "./settings";
 import { buildSnapshotDbBytes } from "./snapshot";
 
@@ -62,6 +68,12 @@ interface PhoneSyncState {
   watchSeen: number;
   snapshotWrittenSinceStart: boolean;
   running: boolean;
+  /**
+   * Change files that failed, by path: the mtime and passphrase stamp at the
+   * failure. Such a file is retried only when it changes, the passphrase
+   * changes, or the server restarts, never on every poll.
+   */
+  failedChangeFiles: Map<string, { mtimeMs: number; passphraseStamp: string | null }>;
 }
 
 declare global {
@@ -83,9 +95,23 @@ function getState(): PhoneSyncState {
       watchSeen: n,
       snapshotWrittenSinceStart: false,
       running: false,
+      failedChangeFiles: new Map(),
     };
   }
+  // A state object from before an HMR reload may predate this field.
+  globalThis._phoneSync.failedChangeFiles ??= new Map();
   return globalThis._phoneSync;
+}
+
+/** True when the file is new or changed since it last applied or failed. */
+function needsApply(
+  state: PhoneSyncState,
+  file: ChangeFileEntry,
+  passphraseStamp: string | null
+): boolean {
+  if (getDevice(file.deviceId)?.lastFileMtimeMs === file.mtimeMs) return false;
+  const failed = state.failedChangeFiles.get(file.path);
+  return !(failed?.mtimeMs === file.mtimeMs && failed.passphraseStamp === passphraseStamp);
 }
 
 function storedError(): PhoneSyncError | null {
@@ -121,29 +147,55 @@ function errorCode(err: unknown): string {
   return err instanceof PhoneSyncCryptoError ? err.code : "apply_failed";
 }
 
-async function applyPendingChangeFiles(folder: string, passphrase: string): Promise<number> {
+/**
+ * Applies new or changed change files. Returns how many applied and how many
+ * database writes the engine made doing so (`engineWrites`), so the caller
+ * can tell its own writes apart from user writes made during the async decrypts.
+ */
+async function applyPendingChangeFiles(
+  state: PhoneSyncState,
+  folder: string,
+  passphrase: string
+): Promise<{ applied: number; engineWrites: number }> {
   let applied = 0;
+  let engineWrites = 0;
+  const passphraseStamp = getPhoneSyncPassphraseStamp();
   for (const file of listChangeFiles(folder)) {
-    const known = getDevice(file.deviceId);
-    if (known?.lastFileMtimeMs === file.mtimeMs) continue;
+    if (!needsApply(state, file, passphraseStamp)) continue;
+    let change: ChangeFile | null = null;
+    let failure: unknown = null;
     try {
       const blob = new Uint8Array(fs.readFileSync(file.path));
-      const change = decodeChangeFile(await decryptPayload(blob, passphrase));
+      change = decodeChangeFile(await decryptPayload(blob, passphrase));
       if (change.deviceId !== file.deviceId) {
         throw new PhoneSyncCryptoError("bad_format", "device id does not match file name");
       }
-      // Sets last_file_mtime_ms only when the whole file applies.
-      applyChangeFile(change, file.mtimeMs);
-      recordDeviceError(file.deviceId, null);
-      applied++;
     } catch (err) {
-      const code = errorCode(err);
+      failure = err;
+    }
+    // Synchronous from here on, so the count holds only this file's writes.
+    const before = totalChanges();
+    if (!failure && change) {
+      try {
+        // Sets last_file_mtime_ms only when the whole file applies.
+        applyChangeFile(change, file.mtimeMs);
+        recordDeviceError(file.deviceId, null);
+        state.failedChangeFiles.delete(file.path);
+        applied++;
+      } catch (err) {
+        failure = err;
+      }
+    }
+    if (failure) {
+      const code = errorCode(failure);
       console.error(`[phone-sync] change file for device ${file.deviceId} failed: ${code}`);
       ensureDevice(file.deviceId);
       recordDeviceError(file.deviceId, code);
+      state.failedChangeFiles.set(file.path, { mtimeMs: file.mtimeMs, passphraseStamp });
     }
+    engineWrites += totalChanges() - before;
   }
-  return applied;
+  return { applied, engineWrites };
 }
 
 /**
@@ -204,10 +256,13 @@ async function syncPass(state: PhoneSyncState, folder: string | null): Promise<v
   const passphrase = getPhoneSyncPassphrase();
   if (!passphrase) return recordError(state, "no_passphrase");
 
-  const applied = await applyPendingChangeFiles(dir, passphrase);
+  const { applied, engineWrites } = await applyPendingChangeFiles(state, dir, passphrase);
 
   const changesBeforeSnapshot = totalChanges();
-  const pending = changesBeforeSnapshot > state.baseline;
+  // Bookkeeping for change files that did not apply (device rows, errors) is
+  // not a reason to rewrite the snapshot; user writes, even ones made during
+  // the decrypts above, are.
+  const pending = changesBeforeSnapshot - engineWrites > state.baseline;
   let snapshot: { at: string; bytes: number } | null = null;
   if (applied > 0 || pending || !state.snapshotWrittenSinceStart) {
     const now = new Date();
@@ -265,9 +320,9 @@ export function checkChangeFiles(): void {
   } catch {
     files = null;
   }
+  const passphraseStamp = getPhoneSyncPassphraseStamp();
   const changed =
-    files === null ||
-    files.some((file) => getDevice(file.deviceId)?.lastFileMtimeMs !== file.mtimeMs);
+    files === null || files.some((file) => needsApply(state, file, passphraseStamp));
   // An unreadable folder also syncs, so the error is recorded in the status.
   if (changed) void state.scheduler.syncNow();
 }
@@ -338,6 +393,8 @@ export async function initPhoneSync(
  */
 export async function syncPhoneNow(): Promise<PhoneSyncStatus> {
   const state = globalThis._phoneSync;
+  // A user-requested sync retries change files that failed before.
+  state?.failedChangeFiles?.clear();
   if (!getPhoneSyncConfig().enabled || !state?.scheduler) {
     // Starts (with a first sync) when enabled, stops when disabled.
     await initPhoneSync();

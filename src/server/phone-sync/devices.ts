@@ -94,11 +94,17 @@ export function ensureDevice(deviceId: string): void {
     .run(deviceId, deviceId);
 }
 
-/** Stores the last decrypt or format error for a device, or clears it with null. */
+/**
+ * Stores the last decrypt or format error for a device, or clears it with
+ * null. Writes nothing when the value is unchanged, so a repeated error does
+ * not look like a local database change to the phone sync engine.
+ */
 export function recordDeviceError(deviceId: string, error: string | null): void {
   getDb()
-    .prepare("UPDATE phone_sync_devices SET last_error = ? WHERE device_id = ?")
-    .run(error, deviceId);
+    .prepare(
+      "UPDATE phone_sync_devices SET last_error = ? WHERE device_id = ? AND last_error IS NOT ?"
+    )
+    .run(error, deviceId, error);
 }
 
 /** Highest applied seq per device, written back into the snapshot as acks. */

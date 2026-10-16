@@ -34,7 +34,7 @@ import {
   getPhoneSyncPassphrase,
   getPhoneSyncPassphraseStamp,
 } from "./settings";
-import { buildSnapshotDbBytes } from "./snapshot";
+import { buildSnapshotDbBytes, sweepStaleSnapshotDirs } from "./snapshot";
 
 export const LOCAL_CHANGE_CHECK_MS = 5_000;
 export const CHANGE_POLL_MS = 120_000;
@@ -350,6 +350,8 @@ export async function initPhoneSync(
   opts: { clock?: SchedulerClock<unknown> } = {}
 ): Promise<void> {
   try {
+    // Even when disabled: a crash may have left a plaintext copy behind.
+    sweepStaleSnapshotDirs();
     if (!getPhoneSyncConfig().enabled) {
       stopPhoneSync();
       return;

@@ -466,6 +466,30 @@ test("the write probe runs only when a snapshot is about to be written", async (
   assert.equal(ok.error, null);
 });
 
+test("start sweeps stale snapshot temp dirs left by a crash", async () => {
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const make = (name, mtime) => {
+    const dir = path.join(tmpDir, name);
+    mkdirSync(dir);
+    writeFileSync(path.join(dir, "snapshot.db"), "synthetic");
+    if (mtime) utimesSync(dir, mtime, mtime);
+    return dir;
+  };
+  const stale = make("spent-snapshot-staleA1", old);
+  const fresh = make("spent-snapshot-freshB2");
+  const unrelated = make("other-tool-oldC3", old);
+  settings.setPhoneSyncConfig({ enabled: false });
+  try {
+    await engine.initPhoneSync();
+    assert.equal(existsSync(stale), false);
+    assert.equal(existsSync(fresh), true);
+    assert.equal(existsSync(unrelated), true);
+  } finally {
+    rmSync(fresh, { recursive: true, force: true });
+    rmSync(unrelated, { recursive: true, force: true });
+  }
+});
+
 test("folder error matching respects the path separator boundary", () => {
   const folder = path.join(dataDir, "drive-boundary");
   const errAt = (p) => Object.assign(new Error("fs"), { code: "ENOENT", path: p });

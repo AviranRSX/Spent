@@ -1,6 +1,13 @@
 import "server-only";
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  type Dirent,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -16,6 +23,33 @@ export const SNAPSHOT_SECRET_SETTING_PATTERNS = [
 
 const SNAPSHOT_DIR_PREFIX = "spent-snapshot-";
 const SNAPSHOT_FORMAT_VERSION = "1";
+/** A build takes seconds; a temp dir older than this was left by a crash. */
+export const STALE_SNAPSHOT_DIR_MS = 60 * 60 * 1000;
+
+/**
+ * Removes snapshot temp dirs in os.tmpdir() older than STALE_SNAPSHOT_DIR_MS.
+ * A crash between VACUUM INTO and cleanup leaves a plaintext database copy
+ * there. Only directories with our prefix are touched. Best effort, never throws.
+ */
+export function sweepStaleSnapshotDirs(now = Date.now()): void {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(os.tmpdir(), { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(SNAPSHOT_DIR_PREFIX)) continue;
+    const dir = path.join(os.tmpdir(), entry.name);
+    try {
+      if (now - statSync(dir).mtimeMs > STALE_SNAPSHOT_DIR_MS) {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    } catch {
+      // Gone already or locked; try again next start.
+    }
+  }
+}
 
 export interface SnapshotOptions {
   acks: Record<string, number>;

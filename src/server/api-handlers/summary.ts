@@ -345,7 +345,7 @@ export function getSummaryHandler(ctx: HandlerContext) {
   const transactionCount = getPeriodCount(workspaceId, from, to, spendParams);
 
   // Hero total comes from the workspace-level monthly target. ALL spend
-  // counts against it — tracking-mode is a per-category organizational tag
+  // counts against it: tracking-mode is a per-category organizational tag
   // only and does not exclude spend from the hero verdict. Per-category
   // budgets continue to drive their own category cards independently.
   const monthlyTargetRaw = getWorkspaceSetting(workspaceId, "monthly_target");

@@ -70,6 +70,20 @@ export function trendMonthKeys(endKey: string, count: number): string[] {
   return keys;
 }
 
+/**
+ * Last month of the cash-flow trend. It stays on the current month while the
+ * selected month is inside that window, so selecting a month from the chart
+ * only moves the highlight instead of shifting every bar.
+ */
+export function trendEndMonthKey(
+  selectedKey: string,
+  currentKey: string,
+  count: number
+): string {
+  const windowStart = shiftMonthKey(currentKey, -(count - 1));
+  return selectedKey >= windowStart ? currentKey : selectedKey;
+}
+
 export function buildHomeMonthRange(key: string, now: Date): HomeMonthRange {
   const { year, monthIndex } = parseKey(key);
   const daysInMonth = lastDayOf(key);

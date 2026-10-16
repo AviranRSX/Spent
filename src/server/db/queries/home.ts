@@ -14,10 +14,12 @@ import {
   type TransactionSourceType,
 } from "@/lib/transaction-source-types";
 import {
+  buildHomeMonthRange,
   getAverageWindow,
   HOME_AVERAGE_MONTHS,
   monthKeyFromDate,
   previousComparisonRange,
+  trendEndMonthKey,
   trendMonthKeys,
   type HomeMonthRange,
 } from "@/lib/home-month";
@@ -207,9 +209,14 @@ export function getCashFlowTrend(
   monthCount: number,
   now: Date
 ): HomeHistoricalTrendPoint[] {
-  const keys = trendMonthKeys(month.key, monthCount);
   const currentKey = monthKeyFromDate(now);
-  const rows = getMonthlyCashFlowRows(workspaceId, `${keys[0]}-01`, month.to);
+  const endKey = trendEndMonthKey(month.key, currentKey, monthCount);
+  const keys = trendMonthKeys(endKey, monthCount);
+  const rows = getMonthlyCashFlowRows(
+    workspaceId,
+    `${keys[0]}-01`,
+    buildHomeMonthRange(endKey, now).to
+  );
   return buildMonthlyCashFlowTrend(
     keys.map((key) => ({
       key,

@@ -505,7 +505,7 @@ test("home KPIs for a workspace without history have no average and no savings r
   assert.equal(kpis.expenses, 0);
 });
 
-test("home cash-flow trend returns 12 months ending at the selected month", async () => {
+test("home cash-flow trend returns 12 months ending at the current month", async () => {
   const { workspaceId } = await getHomeFixture();
   const { getCashFlowTrend } = await import("../src/server/db/queries/home.ts");
   const { buildHomeMonthRange } = await import("../src/lib/home-month.ts");
@@ -522,10 +522,31 @@ test("home cash-flow trend returns 12 months ending at the selected month", asyn
     month: "2026-10", income: 9000, expenses: 600, net: 8400, isCurrent: true, isSelected: true,
   });
 
+  // Selecting a month inside the window keeps the same 12 months and only
+  // moves the highlight, so clicking a point does not shift the chart.
   const august = getCashFlowTrend(workspaceId, buildHomeMonthRange("2026-08", FIXTURE_NOW), 12, FIXTURE_NOW);
-  assert.equal(august[11].month, "2026-08");
-  assert.equal(august[11].isSelected, true);
-  assert.equal(august[11].isCurrent, false);
+  assert.deepEqual(august.map((point) => point.month), october.map((point) => point.month));
+  assert.deepEqual(august[9], {
+    month: "2026-08", income: 12000, expenses: 6000, net: 6000, isCurrent: false, isSelected: true,
+  });
+  assert.deepEqual(august[11], {
+    month: "2026-10", income: 9000, expenses: 600, net: 8400, isCurrent: true, isSelected: false,
+  });
+  assert.equal(august.filter((point) => point.isSelected).length, 1);
+
+  // A month older than the window ends the window at that month instead.
+  const old = getCashFlowTrend(workspaceId, buildHomeMonthRange("2025-06", FIXTURE_NOW), 12, FIXTURE_NOW);
+  assert.equal(old[0].month, "2024-07");
+  assert.equal(old[11].month, "2025-06");
+  assert.equal(old[11].isSelected, true);
+});
+
+test("cash-flow trend window ends at the current month unless the selected month falls before it", async () => {
+  const m = await import("../src/lib/home-month.ts");
+  assert.equal(m.trendEndMonthKey("2026-10", "2026-10", 12), "2026-10");
+  assert.equal(m.trendEndMonthKey("2026-03", "2026-10", 12), "2026-10");
+  assert.equal(m.trendEndMonthKey("2025-11", "2026-10", 12), "2026-10");
+  assert.equal(m.trendEndMonthKey("2025-10", "2026-10", 12), "2025-10");
 });
 
 test("budget pace tracks the current month and gives a final view of past months", async () => {

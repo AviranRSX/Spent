@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 interface Props {
   locale: string;
   messages: Record<string, unknown>;
+  /** Desktop gets it from src/i18n/request.ts; the static phone export passes it here. */
+  timeZone?: string;
   children: ReactNode;
 }
 
@@ -34,11 +36,12 @@ function getMessageFallback({
   return `${namespace ? `${namespace}.` : ""}${key}`;
 }
 
-export function I18nProvider({ locale, messages, children }: Props) {
+export function I18nProvider({ locale, messages, timeZone, children }: Props) {
   return (
     <NextIntlClientProvider
       locale={locale}
       messages={messages}
+      timeZone={timeZone}
       onError={onError}
       getMessageFallback={getMessageFallback}
     >

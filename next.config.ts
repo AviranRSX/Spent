@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
@@ -35,7 +36,7 @@ const SECURITY_HEADERS = [
   },
 ];
 
-const nextConfig: NextConfig = {
+const desktopConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "israeli-bank-scrapers"],
   devIndicators: false,
   async headers() {
@@ -47,5 +48,66 @@ const nextConfig: NextConfig = {
     ];
   },
 };
+
+// Phone companion build. Only scripts/mobile/build.mjs sets SPENT_TARGET,
+// and it runs `next build` in a shadow project dir so that Next's
+// intermediate .next/ (always used with output: "export") never touches the
+// repo's .next/, which the always-on desktop service runs from.
+// The export holds only the *.mobile.tsx files. Server modules the
+// in-process router (src/mobile/router.ts) pulls in are swapped for phone
+// ones. Final alias list:
+//   server-only              -> src/mobile/empty.ts
+//   @/server/db/index        -> src/mobile/db/sqljs-db.ts
+//   @/server/sync/scheduler  -> src/mobile/stubs/scheduler.ts
+//   @/server/lib/encryption  -> src/mobile/stubs/encryption.ts
+//   fs (browser)             -> src/mobile/empty.ts
+// resolveAlias only matches import specifiers, so the same three modules are
+// also replaced by file path (they are reached through relative imports
+// too), and `import "server-only"` is stripped from src/server/**, via
+// scripts/mobile/turbopack-loader.cjs.
+const MOBILE_ROOT = process.env.SPENT_MOBILE_ROOT ?? process.cwd();
+const MOBILE_LOADER = path.join(MOBILE_ROOT, "scripts", "mobile", "turbopack-loader.cjs");
+
+const MOBILE_MODULE_SWAPS: [RegExp, string][] = [
+  [/src\/server\/db\/index\.ts$/, "@/mobile/db/sqljs-db"],
+  [/src\/server\/sync\/scheduler\.ts$/, "@/mobile/stubs/scheduler"],
+  [/src\/server\/lib\/encryption\.ts$/, "@/mobile/stubs/encryption"],
+];
+
+const mobileConfig: NextConfig = {
+  output: "export",
+  distDir: "out-mobile",
+  pageExtensions: ["mobile.tsx", "mobile.ts"],
+  images: { unoptimized: true },
+  devIndicators: false,
+  turbopack: {
+    root: MOBILE_ROOT,
+    resolveAlias: {
+      "server-only": "./src/mobile/empty.ts",
+      "@/server/db/index": "./src/mobile/db/sqljs-db.ts",
+      "@/server/sync/scheduler": "./src/mobile/stubs/scheduler.ts",
+      "@/server/lib/encryption": "./src/mobile/stubs/encryption.ts",
+      // sql.js only touches fs in its Node branch.
+      fs: { browser: "./src/mobile/empty.ts" },
+    },
+    rules: {
+      "*.ts": [
+        ...MOBILE_MODULE_SWAPS.map(([file, replaceWith]) => ({
+          condition: { path: file },
+          loaders: [{ loader: MOBILE_LOADER, options: { replaceWith } }],
+          as: "*.ts",
+        })),
+        {
+          condition: { all: [{ not: "foreign" as const }, { path: /src\/server\// }] },
+          loaders: [MOBILE_LOADER],
+          as: "*.ts",
+        },
+      ],
+    },
+  },
+};
+
+const nextConfig =
+  process.env.SPENT_TARGET === "mobile" ? mobileConfig : desktopConfig;
 
 export default withNextIntl(nextConfig);

@@ -63,6 +63,7 @@ scripts/test-*
 !scripts/test-service-windows.mjs
 !scripts/test-phone-sync-*.mjs
 /out-mobile/
+/.mobile-build/
 
 # Temp databases for tests and demo seeds
 .tmp-tests/

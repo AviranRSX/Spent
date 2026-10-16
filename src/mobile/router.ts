@@ -1,0 +1,121 @@
+import { getDb } from "@/mobile/db/sqljs-db";
+import { getHomeHandler } from "@/server/api-handlers/home";
+import { getSummaryHandler } from "@/server/api-handlers/summary";
+import {
+  getAccountNumbersHandler,
+  getTransactionsHandler,
+  getTransactionsSummaryHandler,
+} from "@/server/api-handlers/transactions";
+import {
+  getCategoriesHandler,
+  getCategoryDetailHandler,
+} from "@/server/api-handlers/categories";
+import {
+  getNeedsTripHandler,
+  getTripDetailHandler,
+  getTripMembershipsHandler,
+  getTripsHandler,
+} from "@/server/api-handlers/trips";
+import { listWorkspacesHandler } from "@/server/api-handlers/workspaces";
+import { listIntegrationsHandler } from "@/server/api-handlers/integrations";
+import type { HandlerContext, HandlerResult } from "@/server/api-handlers/types";
+import type { ActivitySnapshot } from "@/lib/types";
+
+type Handler = (ctx: HandlerContext) => HandlerResult<unknown>;
+
+interface Route {
+  pattern: RegExp;
+  /** Names for the pattern's capture groups, in order. */
+  params?: string[];
+  handler: Handler;
+  /** False for routes that do not read a workspace (they still work with none). */
+  scoped?: boolean;
+}
+
+// The phone has no sync, scheduler or Ollama, so activity is always idle.
+const IDLE_ACTIVITY: ActivitySnapshot = {
+  sync: { active: false, since: null, kind: null, stale: false },
+  scheduler: { armed: false, nextRunAt: null },
+  ollama: { running: false, spawnedBySpent: false },
+};
+
+// GET only. Order matters: fixed trip paths come before /api/trips/:id.
+const ROUTES: Route[] = [
+  { pattern: /^\/api\/home$/, handler: getHomeHandler },
+  { pattern: /^\/api\/summary$/, handler: getSummaryHandler },
+  { pattern: /^\/api\/transactions$/, handler: getTransactionsHandler },
+  { pattern: /^\/api\/transactions\/summary$/, handler: getTransactionsSummaryHandler },
+  { pattern: /^\/api\/transactions\/account-numbers$/, handler: getAccountNumbersHandler },
+  { pattern: /^\/api\/categories$/, handler: getCategoriesHandler },
+  {
+    pattern: /^\/api\/categories\/([^/]+)\/detail$/,
+    params: ["id"],
+    handler: getCategoryDetailHandler,
+  },
+  { pattern: /^\/api\/trips$/, handler: getTripsHandler },
+  { pattern: /^\/api\/trips\/needs-trip$/, handler: getNeedsTripHandler },
+  { pattern: /^\/api\/trips\/memberships$/, handler: getTripMembershipsHandler },
+  { pattern: /^\/api\/trips\/([^/]+)$/, params: ["id"], handler: getTripDetailHandler },
+  { pattern: /^\/api\/workspaces$/, handler: listWorkspacesHandler, scoped: false },
+  { pattern: /^\/api\/integrations$/, handler: listIntegrationsHandler },
+  { pattern: /^\/api\/activity$/, handler: () => ({ status: 200, body: IDLE_ACTIVITY }), scoped: false },
+];
+
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** Same rule as getWorkspaceIdFromRequest: a valid header id, else the lowest id. */
+function resolveWorkspaceId(headers: Headers): number {
+  const header = headers.get("x-workspace-id");
+  if (header) {
+    const id = Number(header);
+    if (Number.isInteger(id) && id > 0) {
+      const row = getDb().prepare("SELECT id FROM workspaces WHERE id = ?").get(id) as
+        | { id: number }
+        | undefined;
+      if (row) return row.id;
+    }
+  }
+  const row = getDb().prepare("SELECT id FROM workspaces ORDER BY id LIMIT 1").get() as
+    | { id: number }
+    | undefined;
+  if (!row) throw new Error("No workspace exists in the snapshot");
+  return row.id;
+}
+
+/** Answers the client's /api/* calls in-process from the local snapshot. */
+export async function handleMobileRequest(url: string, init?: RequestInit): Promise<Response> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const parsed = new URL(url, "http://phone.local");
+  const path = parsed.pathname;
+
+  const route =
+    method === "GET" ? ROUTES.find((r) => r.pattern.test(path)) : undefined;
+  if (!route) {
+    return json({ error: `Not available on the phone: ${method} ${path}` }, 404);
+  }
+
+  try {
+    const match = route.pattern.exec(path);
+    const params: Record<string, string> = {};
+    route.params?.forEach((name, i) => {
+      params[name] = decodeURIComponent(match?.[i + 1] ?? "");
+    });
+    const ctx: HandlerContext = {
+      workspaceId: route.scoped === false ? 0 : resolveWorkspaceId(new Headers(init?.headers)),
+      query: parsed.searchParams,
+      params,
+      now: new Date(),
+      nextScheduledSync: null,
+    };
+    const result = route.handler(ctx);
+    return json(result.body, result.status);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return json({ error: message }, 500);
+  }
+}

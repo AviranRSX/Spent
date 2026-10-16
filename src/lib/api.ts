@@ -36,6 +36,7 @@ export type {
   ImportRowIssue,
 } from "./imports/import-types";
 import { getActiveWorkspaceIdSync } from "./workspace-store";
+import { apiFetch } from "./api-transport";
 
 const BASE = "";
 
@@ -49,7 +50,7 @@ function withWorkspaceHeader(init?: RequestInit): RequestInit {
 }
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, withWorkspaceHeader(init));
+  const res = await apiFetch(`${BASE}${url}`, withWorkspaceHeader(init));
   if (!res.ok) {
     const text = await res.text().catch(() => "Request failed");
     throw new Error(text);
@@ -553,7 +554,7 @@ export interface CategorizePreviewProgress {
 export async function previewCategorizeStream(
   onProgress: (progress: CategorizePreviewProgress) => void
 ) {
-  const res = await fetch(
+  const res = await apiFetch(
     "/api/categorize/preview/stream",
     withWorkspaceHeader({ method: "POST" })
   );
@@ -649,7 +650,7 @@ export function startSync(
 
   (async () => {
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         "/api/sync",
         withWorkspaceHeader({
           method: "POST",
@@ -816,7 +817,7 @@ export function pullOllamaModel(
 
   (async () => {
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         "/api/ai/ollama/pull",
         withWorkspaceHeader({
           method: "POST",

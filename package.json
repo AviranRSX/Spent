@@ -31,7 +31,8 @@
     "menubar:build": "bash menubar/mac/build.sh",
     "menubar:install:mac": "bash menubar/mac/build.sh && cp -R menubar/mac/build/Spent.app ~/Applications/",
     "menubar:build:windows": "powershell -ExecutionPolicy Bypass -File menubar/windows/build.ps1",
-    "menubar:install:windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& './menubar/windows/build.ps1'; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $d = Join-Path $env:LOCALAPPDATA 'Programs\\Spent'; New-Item -ItemType Directory -Force -Path $d | Out-Null; Copy-Item -Force 'menubar/windows/build/Spent.exe' (Join-Path $d 'Spent.exe')\""
+    "menubar:install:windows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& './menubar/windows/build.ps1'; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $d = Join-Path $env:LOCALAPPDATA 'Programs\\Spent'; New-Item -ItemType Directory -Force -Path $d | Out-Null; Copy-Item -Force 'menubar/windows/build/Spent.exe' (Join-Path $d 'Spent.exe')\"",
+    "mobile:build": "node scripts/mobile/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.95.2",

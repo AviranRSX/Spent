@@ -2,21 +2,14 @@ import { NextResponse } from "next/server";
 import {
   createParentCategory,
   ensureCategory,
-  getAllCategories,
 } from "@/server/db/queries/categories";
+import { getCategoriesHandler } from "@/server/api-handlers/categories";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
-import type { CategoryKind } from "@/lib/types";
 
 export async function GET(request: Request) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  const { searchParams } = new URL(request.url);
-  const raw = searchParams.get("kind");
-  const kind: CategoryKind | undefined =
-    raw === "expense" || raw === "income" ? raw : undefined;
-  const leavesOnly = searchParams.get("leavesOnly") === "1";
-  return NextResponse.json(
-    getAllCategories(workspaceId, kind, { leavesOnly })
-  );
+  const result = getCategoriesHandler(buildHandlerContext(request));
+  return NextResponse.json(result.body, { status: result.status });
 }
 
 interface CreateBody {

@@ -1,7 +1,14 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { registerHooks } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+function withTsExtension(target) {
+  if (path.extname(target) !== "") return target;
+  if (existsSync(`${target}.ts`)) return `${target}.ts`;
+  if (existsSync(path.join(target, "index.ts"))) return path.join(target, "index.ts");
+  return `${target}.ts`;
+}
 
 /** Same `@/` and extensionless relative resolve hooks as scripts/test-trips-db.mjs. */
 export function registerSrcAliases() {
@@ -10,15 +17,23 @@ export function registerSrcAliases() {
     resolve(specifier, context, nextResolve) {
       if (specifier.startsWith("@/")) {
         const target = path.join(srcRoot, specifier.slice(2));
-        const withExt = path.extname(target) === "" ? `${target}.ts` : target;
-        return nextResolve(pathToFileURL(withExt).href, context);
+        return nextResolve(pathToFileURL(withTsExtension(target)).href, context);
+      }
+      // Lets tests import route.ts files, which pull in next/server.
+      if (specifier === "next/server") {
+        return nextResolve("next/server.js", context);
       }
       if (
         specifier.startsWith(".") &&
         path.extname(specifier) === "" &&
-        context.parentURL?.includes("/src/")
+        context.parentURL?.includes("/src/") &&
+        !context.parentURL.includes("/node_modules/")
       ) {
-        return nextResolve(`${specifier}.ts`, context);
+        const target = path.resolve(
+          path.dirname(fileURLToPath(context.parentURL)),
+          specifier
+        );
+        return nextResolve(pathToFileURL(withTsExtension(target)).href, context);
       }
       return nextResolve(specifier, context);
     },

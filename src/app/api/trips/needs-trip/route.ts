@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getNeedsTripQueue } from "@/server/db/queries/trips";
-import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
+import { getNeedsTripHandler } from "@/server/api-handlers/trips";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 
 export async function GET(request: Request) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  return NextResponse.json({ items: getNeedsTripQueue(workspaceId) });
+  const result = getNeedsTripHandler(buildHandlerContext(request));
+  return NextResponse.json(result.body, { status: result.status });
 }

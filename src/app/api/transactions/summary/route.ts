@@ -1,37 +1,8 @@
 import { NextResponse } from "next/server";
-import { getTransactionsSummary } from "@/server/db/queries/transactions";
-import type { TransactionSourceType } from "@/lib/transaction-source-types";
-import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
-
-function parseSourceType(raw: string | null): TransactionSourceType | undefined {
-  if (raw === "bank" || raw === "card" || raw === "all") {
-    return raw;
-  }
-  return undefined;
-}
+import { getTransactionsSummaryHandler } from "@/server/api-handlers/transactions";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 
 export async function GET(request: Request) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  const { searchParams } = new URL(request.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-
-  if (!from || !to) {
-    return NextResponse.json(
-      { error: "from and to are required" },
-      { status: 400 }
-    );
-  }
-
-  const credentialIds = searchParams
-    .getAll("credentialIds")
-    .map((v) => Number(v))
-    .filter((n) => Number.isFinite(n) && n > 0);
-
-  return NextResponse.json(
-    getTransactionsSummary(workspaceId, from, to, {
-      credentialIds: credentialIds.length > 0 ? credentialIds : undefined,
-      sourceType: parseSourceType(searchParams.get("sourceType")),
-    })
-  );
+  const result = getTransactionsSummaryHandler(buildHandlerContext(request));
+  return NextResponse.json(result.body, { status: result.status });
 }

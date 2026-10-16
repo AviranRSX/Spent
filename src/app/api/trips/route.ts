@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { createTrip, getTripsOverview } from "@/server/db/queries/trips";
+import { createTrip } from "@/server/db/queries/trips";
+import { getTripsHandler } from "@/server/api-handlers/trips";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 import { parseTripInput } from "@/lib/trips/validation";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 
 export async function GET(request: Request) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  return NextResponse.json(getTripsOverview(workspaceId));
+  const result = getTripsHandler(buildHandlerContext(request));
+  return NextResponse.json(result.body, { status: result.status });
 }
 
 export async function POST(request: Request) {

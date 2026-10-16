@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import {
-  createWorkspace,
-  listWorkspaces,
-} from "@/server/db/queries/workspaces";
+import { createWorkspace } from "@/server/db/queries/workspaces";
+import { listWorkspacesHandler } from "@/server/api-handlers/workspaces";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 
-export async function GET() {
-  return NextResponse.json(listWorkspaces());
+export async function GET(request: Request) {
+  const result = listWorkspacesHandler(buildHandlerContext(request));
+  return NextResponse.json(result.body, { status: result.status });
 }
 
 export async function POST(request: Request) {

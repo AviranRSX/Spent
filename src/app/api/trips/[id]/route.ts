@@ -2,21 +2,19 @@ import { NextResponse } from "next/server";
 import {
   deleteTrip,
   getTrip,
-  getTripDetail,
   updateTrip,
 } from "@/server/db/queries/trips";
+import { getTripDetailHandler } from "@/server/api-handlers/trips";
+import { buildHandlerContext } from "@/server/lib/handler-context";
 import { parseTripId, parseTripPatch } from "@/lib/trips/validation";
 import { getWorkspaceIdFromRequest } from "@/server/lib/workspace-context";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(request: Request, { params }: Context) {
-  const workspaceId = getWorkspaceIdFromRequest(request);
-  const id = parseTripId((await params).id);
-  if (id == null) return NextResponse.json({ error: "invalid id" }, { status: 400 });
-  const detail = getTripDetail(workspaceId, id);
-  if (!detail) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json(detail);
+  const { id } = await params;
+  const result = getTripDetailHandler(buildHandlerContext(request, { id }));
+  return NextResponse.json(result.body, { status: result.status });
 }
 
 export async function PATCH(request: Request, { params }: Context) {

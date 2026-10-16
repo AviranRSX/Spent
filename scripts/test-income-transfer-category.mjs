@@ -40,8 +40,9 @@ runSqlMigrations(db);
 
 test.after(() => {
   db.close();
+  // Only this file's dir: other test files run in parallel and keep their
+  // databases open under the shared tmpRoot.
   rmSync(dataDir, { recursive: true, force: true });
-  rmSync(tmpRoot, { recursive: true, force: true });
 });
 
 test("migrations seed Transfers as both expense and income categories", () => {

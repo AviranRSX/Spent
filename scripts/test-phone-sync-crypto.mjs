@@ -81,6 +81,21 @@ test("future version rejects with unsupported_version", async () => {
   await rejectsWith(decryptPayload(future, PASS), "unsupported_version");
 });
 
+test("NFD and NFC forms of a passphrase derive the same key", async () => {
+  const nfd = "café secret";
+  const nfc = "café secret";
+  assert.notEqual(nfd, nfc);
+  const blob = await encryptPayload(new Uint8Array([9, 8, 7]), nfd);
+  assert.deepEqual(await decryptPayload(blob, nfc), new Uint8Array([9, 8, 7]));
+});
+
+test("tampered ciphertext rejects with bad_passphrase", async () => {
+  const blob = await encryptPayload(new Uint8Array([1, 2, 3]), PASS);
+  const tampered = blob.slice();
+  tampered[40] ^= 1;
+  await rejectsWith(decryptPayload(tampered, PASS), "bad_passphrase");
+});
+
 test("change file names", () => {
   assert.equal(changeFileName("ab12cd34ef"), "changes-ab12cd34ef.spent.enc");
   assert.equal(parseChangeFileName("changes-ab12cd34ef.spent.enc"), "ab12cd34ef");

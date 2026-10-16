@@ -46,7 +46,8 @@ async function deriveKey(
   const subtle = globalThis.crypto.subtle;
   const material = await subtle.importKey(
     "raw",
-    new TextEncoder().encode(passphrase),
+    // NFC so the same typed text derives the same key across keyboards and IMEs.
+    new TextEncoder().encode(passphrase.normalize("NFC")),
     "PBKDF2",
     false,
     ["deriveKey"],

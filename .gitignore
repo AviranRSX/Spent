@@ -67,3 +67,18 @@ scripts/test-*
 
 # Temp databases for tests and demo seeds
 .tmp-tests/
+
+# Android companion (Capacitor). android/ is committed; its build outputs,
+# signing material and local SDK paths are not. android/.gitignore also
+# covers the generated capacitor.config.json and plugin lists.
+!.env.mobile.example
+.env.mobile
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/app/release/
+/android/local.properties
+/android/app/src/main/assets/public/
+/android/app/google-services.json
+*.jks
+*.keystore

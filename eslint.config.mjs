@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Phone build output and its temporary shadow project.
     "out-mobile/**",
     ".mobile-build/**",
+    // Capacitor Android project; holds a copy of out-mobile/ after cap sync.
+    "android/**",
   ]),
 ]);
 

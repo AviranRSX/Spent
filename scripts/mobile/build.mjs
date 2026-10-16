@@ -11,9 +11,11 @@ import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   cpSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -21,10 +23,16 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const shadow = path.join(root, ".mobile-build");
 const outDir = path.join(root, "out-mobile");
+
+// Build-time phone settings (the Google web client id) live in the gitignored
+// .env.mobile. Values already set in the environment win.
+const envFile = path.join(root, ".env.mobile");
+const mobileEnv = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
 
 // Unlinks the junctions first so a recursive delete can never walk into the
 // real src/ or public/.
@@ -62,6 +70,7 @@ try {
     cwd: shadow,
     stdio: "inherit",
     env: {
+      ...mobileEnv,
       ...process.env,
       SPENT_TARGET: "mobile",
       SPENT_MOBILE_ROOT: root,

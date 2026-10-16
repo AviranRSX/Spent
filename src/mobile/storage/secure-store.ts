@@ -1,0 +1,41 @@
+// Small secrets on the phone, kept by capacitor-secure-storage-plugin: values
+// are encrypted with a key held in the Android Keystore. The plugin is
+// imported lazily so desktop builds and node tests never load it.
+import type { SecureStoragePluginPlugin } from "capacitor-secure-storage-plugin";
+
+export type SecretKey = "passphrase" | "deviceId" | "deviceName" | "folderId" | "folderName";
+
+const SECRET_KEYS: SecretKey[] = ["passphrase", "deviceId", "deviceName", "folderId", "folderName"];
+const PREFIX = "spent.";
+
+async function storage(): Promise<SecureStoragePluginPlugin> {
+  const { SecureStoragePlugin } = await import("capacitor-secure-storage-plugin");
+  return SecureStoragePlugin;
+}
+
+async function storedKeys(plugin: SecureStoragePluginPlugin): Promise<Set<string>> {
+  const { value } = await plugin.keys();
+  return new Set(value);
+}
+
+export async function getSecret(key: SecretKey): Promise<string | null> {
+  const plugin = await storage();
+  // get() rejects for a missing key, so check first.
+  if (!(await storedKeys(plugin)).has(PREFIX + key)) return null;
+  const { value } = await plugin.get({ key: PREFIX + key });
+  return value;
+}
+
+export async function setSecret(key: SecretKey, value: string): Promise<void> {
+  const plugin = await storage();
+  await plugin.set({ key: PREFIX + key, value });
+}
+
+/** Removes every Spent secret (used by Disconnect). */
+export async function clearAll(): Promise<void> {
+  const plugin = await storage();
+  const present = await storedKeys(plugin);
+  for (const key of SECRET_KEYS) {
+    if (present.has(PREFIX + key)) await plugin.remove({ key: PREFIX + key });
+  }
+}

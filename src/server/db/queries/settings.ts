@@ -1,11 +1,21 @@
 import "server-only";
 
 import { getDb } from "../index";
-import type { AppSettings, DataSourceMode } from "@/lib/types";
+import { isAIProviderId, type AppSettings, type DataSourceMode } from "@/lib/types";
+import {
+  CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  OPENAI_MODELS,
+  resolveCloudModel,
+} from "@/lib/ai-models";
+import { DEFAULT_OLLAMA_MODEL } from "@/lib/ollama-model-options";
 
 // Global settings live in the `settings` table and apply to every workspace.
-// Currently: ai_provider, ai_ollama_url, ai_ollama_model, plus the encrypted
-// Claude API key triple (ai_api_key_encrypted/iv/auth_tag).
+// Currently: ai_provider, ai_ollama_url, ai_ollama_model, ai_claude_model,
+// ai_openai_model, plus the encrypted Claude API key triple
+// (ai_api_key_encrypted/iv/auth_tag) and OpenAI API key triple
+// (ai_openai_key_encrypted/iv/auth_tag).
 export function getGlobalSetting(key: string): string | null {
   const row = getDb()
     .prepare("SELECT value FROM settings WHERE key = ?")
@@ -79,6 +89,30 @@ export function setDataSourceMode(
   setWorkspaceSetting(workspaceId, "data_source_mode", mode);
 }
 
+export type AISettings = Pick<
+  AppSettings,
+  "aiProvider" | "ollamaUrl" | "ollamaModel" | "claudeModel" | "openaiModel"
+>;
+
+export function getAISettings(): AISettings {
+  const aiProvider = getGlobalSetting("ai_provider");
+  return {
+    aiProvider: isAIProviderId(aiProvider) ? aiProvider : "none",
+    ollamaUrl: getGlobalSetting("ai_ollama_url") ?? "http://localhost:11434",
+    ollamaModel: getGlobalSetting("ai_ollama_model") ?? DEFAULT_OLLAMA_MODEL,
+    claudeModel: resolveCloudModel(
+      CLAUDE_MODELS,
+      getGlobalSetting("ai_claude_model"),
+      DEFAULT_CLAUDE_MODEL
+    ),
+    openaiModel: resolveCloudModel(
+      OPENAI_MODELS,
+      getGlobalSetting("ai_openai_model"),
+      DEFAULT_OPENAI_MODEL
+    ),
+  };
+}
+
 export function getAppSettings(workspaceId: number): AppSettings {
   const targetRaw = getWorkspaceSetting(workspaceId, "monthly_target");
   const target = targetRaw != null ? Number(targetRaw) : NaN;
@@ -87,9 +121,7 @@ export function getAppSettings(workspaceId: number): AppSettings {
   return {
     monthsToSync: Number(getWorkspaceSetting(workspaceId, "months_to_sync") ?? "3"),
     dataSourceMode: getDataSourceMode(workspaceId),
-    aiProvider: (getGlobalSetting("ai_provider") ?? "none") as AppSettings["aiProvider"],
-    ollamaUrl: getGlobalSetting("ai_ollama_url") ?? "http://localhost:11434",
-    ollamaModel: getGlobalSetting("ai_ollama_model") ?? "llama3.2:3b",
+    ...getAISettings(),
     showBrowser: getWorkspaceSetting(workspaceId, "scraper_show_browser") === "true",
     paydayDay: Number(getWorkspaceSetting(workspaceId, "payday_day") ?? "1"),
     monthlyTarget: Number.isFinite(target) && target > 0 ? target : null,
@@ -123,6 +155,9 @@ export function updateAppSettings(
       }
     }
     if (settings.aiProvider !== undefined) {
+      if (!isAIProviderId(settings.aiProvider)) {
+        throw new Error("aiProvider must be 'claude', 'openai', 'ollama' or 'none'");
+      }
       setGlobalSetting("ai_provider", settings.aiProvider);
     }
     if (settings.ollamaUrl !== undefined) {
@@ -130,6 +165,18 @@ export function updateAppSettings(
     }
     if (settings.ollamaModel !== undefined) {
       setGlobalSetting("ai_ollama_model", settings.ollamaModel);
+    }
+    if (settings.claudeModel !== undefined) {
+      setGlobalSetting(
+        "ai_claude_model",
+        resolveCloudModel(CLAUDE_MODELS, settings.claudeModel, DEFAULT_CLAUDE_MODEL)
+      );
+    }
+    if (settings.openaiModel !== undefined) {
+      setGlobalSetting(
+        "ai_openai_model",
+        resolveCloudModel(OPENAI_MODELS, settings.openaiModel, DEFAULT_OPENAI_MODEL)
+      );
     }
     if (settings.showBrowser !== undefined) {
       setWorkspaceSetting(

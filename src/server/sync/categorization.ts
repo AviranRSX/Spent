@@ -24,22 +24,42 @@ import {
 } from "@/server/sync/description-history";
 import type { CategoryMapping, MatchingDescriptionHistory } from "@/server/ai/types";
 import { LOW_CONFIDENCE_MAX } from "@/lib/transaction-review-filter";
+import type { AppSettings } from "@/lib/types";
 
 export type CategorizationEventSender = (
   event: string,
   data: Record<string, unknown>
 ) => void;
 
-export function friendlyAIError(err: unknown, modelName: string): string {
+export function friendlyAIError(
+  err: unknown,
+  settings: Pick<AppSettings, "aiProvider" | "ollamaModel">
+): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (settings.aiProvider === "openai") {
+    if (/\((401|403)\)/.test(msg)) {
+      return "OpenAI API request was rejected. Check your API key in settings.";
+    }
+    if (/\(429\)/.test(msg)) {
+      return "OpenAI rate limit or quota reached. Check your OpenAI plan and billing.";
+    }
+    if (/fetch failed|ENOTFOUND|ECONNREFUSED/i.test(msg)) {
+      return "Could not reach the OpenAI API. Check your internet connection.";
+    }
+    return `AI categorization failed: ${msg}`;
+  }
+  if (settings.aiProvider === "claude") {
+    if (/api[_-]?key|401|403|authentication/i.test(msg)) {
+      return "Claude API request was rejected. Check your API key in settings.";
+    }
+    return `AI categorization failed: ${msg}`;
+  }
+  const modelName = settings.ollamaModel;
   if (/model.*not found|pull.*model|404/i.test(msg)) {
     return `Ollama model "${modelName}" is not installed. Run: ollama pull ${modelName}`;
   }
   if (/ECONNREFUSED|fetch failed/i.test(msg)) {
     return "Ollama is not reachable. Make sure it's installed and that no firewall is blocking port 11434.";
-  }
-  if (/Anthropic|api[_-]?key|401|403/i.test(msg)) {
-    return "Claude API request was rejected. Check your API key in settings.";
   }
   return `AI categorization failed: ${msg}`;
 }
@@ -377,7 +397,7 @@ export async function categorizeWorkspaceTransactions(
       } catch (err) {
         console.error(`[sync] AI categorization batch failed (${kind}):`, err);
         if (!aiWarning) {
-          aiWarning = friendlyAIError(err, settings.ollamaModel);
+          aiWarning = friendlyAIError(err, settings);
         }
         diagnosticSink?.({
           type: "ai-batch",

@@ -567,14 +567,19 @@
       "providerCardDescription": "ניתן להחליף בכל עת. הסיווגים הקיימים יישמרו.",
       "providerClaudeTitle": "Claude (Anthropic)",
       "providerClaudeDesc": "מהיר ומדויק. API בתשלום. השתמשו במפתח API שלכם.",
+      "providerOpenAITitle": "OpenAI",
+      "providerOpenAIDesc": "מהיר וזול. API בתשלום. השתמשו במפתח API שלכם.",
       "providerOllamaTitle": "Ollama (מקומי)",
       "providerOllamaDesc": "חינמי, פרטי, רץ על המחשב שלכם. דורש הורדת מודל.",
       "providerNoneTitle": "ללא",
       "providerNoneDesc": "דילוג על הסיווג. שייכו קטגוריות ידנית.",
-      "claudeKeyCardTitle": "מפתח Claude API",
+      "claudeKeyCardTitle": "הגדרות Claude",
       "claudeKeyCardDescription": "הדביקו את המפתח שלכם מ־console.anthropic.com. הוא מוצפן במנוחה עם AES-256-GCM.",
+      "openaiKeyCardTitle": "הגדרות OpenAI",
+      "openaiKeyCardDescription": "הדביקו את המפתח שלכם מ־platform.openai.com. הוא מוצפן במנוחה עם AES-256-GCM.",
       "apiKeyLabel": "מפתח API",
       "leaveBlankHint": "השאירו ריק כדי לשמור על המפתח הקיים.",
+      "cloudModelHint": "החשיבה (reasoning) כבויה, כך שהסיווג נשאר מהיר וזול.",
       "ollamaCardTitle": "הגדרות Ollama",
       "ollamaCardDescription": "Spent מפעיל את Ollama אוטומטית אם הוא מותקן ולא רץ.",
       "ollamaUrlLabel": "כתובת Ollama",
@@ -945,10 +950,10 @@
     }
   },
   "ollamaModels": {
-    "llama3_2_3b": "מומלץ. מהיר ומדויק מספיק לסיווג.",
-    "llama3_2_1b": "הקטן והמהיר ביותר. קצת פחות מדויק.",
-    "llama3_1_8b": "איכות גבוהה יותר, איטי יותר, הורדה גדולה יותר.",
-    "qwen2_5_3b": "מודל חלופי 3B של עליבאבא."
+    "qwen3_5_9b": "מומלץ. המדויק ביותר לסיווג. דורש כ־8 GB זיכרון.",
+    "llama3_2_3b": "קטן ומהיר יותר, למחשבים עם פחות זיכרון. פחות מדויק.",
+    "llama3_2_1b": "הקטן והמהיר ביותר. הכי פחות מדויק.",
+    "llama3_1_8b": "חלופה בגודל בינוני. איטי יותר מ־qwen3.5:9b ופחות מדויק."
   },
   "formatters": {
     "neverSynced": "לא סונכרן",

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-const { buildOllamaModelOptions } = await import(
+const { buildOllamaModelOptions, DEFAULT_OLLAMA_MODEL, RECOMMENDED_OLLAMA_MODELS } = await import(
   "../src/lib/ollama-model-options.ts"
 );
 
@@ -20,7 +20,8 @@ test("shows installed Ollama models before recommended download options", () => 
     [
       { name: "qwen2.5:3b", installed: true, recommended: false },
       { name: "mistral:7b", installed: true, recommended: false },
-      { name: "llama3.2:3b", installed: false, recommended: true },
+      { name: "qwen3.5:9b", installed: false, recommended: true },
+      { name: "llama3.2:3b", installed: false, recommended: false },
       { name: "llama3.2:1b", installed: false, recommended: false },
       { name: "llama3.1:8b", installed: false, recommended: false },
     ]
@@ -35,4 +36,14 @@ test("keeps a custom selected model visible when it is not installed", () => {
 
   assert.equal(options.at(-1)?.name, "custom:latest");
   assert.equal(options.at(-1)?.installed, false);
+});
+
+test("recommends qwen3.5:9b as the default local model", () => {
+  assert.equal(DEFAULT_OLLAMA_MODEL, "qwen3.5:9b");
+  assert.deepEqual(
+    RECOMMENDED_OLLAMA_MODELS.filter((model) => model.recommended).map(
+      (model) => model.name
+    ),
+    ["qwen3.5:9b"]
+  );
 });

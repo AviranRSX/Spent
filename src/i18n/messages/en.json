@@ -567,14 +567,19 @@
       "providerCardDescription": "Switch any time. Your existing categorizations are kept.",
       "providerClaudeTitle": "Claude (Anthropic)",
       "providerClaudeDesc": "Fast and accurate. Paid API. Bring your own API key.",
+      "providerOpenAITitle": "OpenAI",
+      "providerOpenAIDesc": "Fast and low cost. Paid API. Bring your own API key.",
       "providerOllamaTitle": "Ollama (Local)",
       "providerOllamaDesc": "Free, private, runs on your machine. Needs a model download.",
       "providerNoneTitle": "None",
       "providerNoneDesc": "Skip categorization. Assign categories manually.",
-      "claudeKeyCardTitle": "Claude API key",
+      "claudeKeyCardTitle": "Claude configuration",
       "claudeKeyCardDescription": "Paste your key from console.anthropic.com. It's encrypted at rest with AES-256-GCM.",
+      "openaiKeyCardTitle": "OpenAI configuration",
+      "openaiKeyCardDescription": "Paste your key from platform.openai.com. It's encrypted at rest with AES-256-GCM.",
       "apiKeyLabel": "API key",
       "leaveBlankHint": "Leave blank to keep your existing key.",
+      "cloudModelHint": "Reasoning is turned off, which keeps categorizing fast and cheap.",
       "ollamaCardTitle": "Ollama configuration",
       "ollamaCardDescription": "Spent auto-starts Ollama if it's installed but not running.",
       "ollamaUrlLabel": "Ollama URL",
@@ -945,10 +950,10 @@
     }
   },
   "ollamaModels": {
-    "llama3_2_3b": "Recommended. Fast and accurate enough for categorizing.",
-    "llama3_2_1b": "Smallest and fastest. Slightly less accurate.",
-    "llama3_1_8b": "Higher quality, slower, larger download.",
-    "qwen2_5_3b": "Alternative 3B model from Alibaba."
+    "qwen3_5_9b": "Recommended. Most accurate for categorizing. Needs about 8 GB of memory.",
+    "llama3_2_3b": "Smaller and faster, for machines with less memory. Less accurate.",
+    "llama3_2_1b": "Smallest and fastest. Least accurate.",
+    "llama3_1_8b": "Mid-size alternative. Slower than qwen3.5:9b and less accurate."
   },
   "formatters": {
     "neverSynced": "Never synced",

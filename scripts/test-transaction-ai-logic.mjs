@@ -592,3 +592,188 @@ test("builds exact replay targets for duplicate sequences in each file", async (
     ]
   );
 });
+
+const SAMPLE_TRANSACTIONS = [
+  { description: "Supermarket", amount: -100, currency: "ILS" },
+];
+const SAMPLE_CATEGORIES = [{ name: "Groceries", description: "Food stores" }];
+
+async function withMockedFetch(handler, run) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = handler;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+test("keeps a stored cloud model only while it is still offered", async () => {
+  const { CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, resolveCloudModel } =
+    await import("../src/lib/ai-models.ts");
+
+  assert.equal(DEFAULT_CLAUDE_MODEL, "claude-haiku-5-5");
+  assert.equal(
+    resolveCloudModel(CLAUDE_MODELS, "claude-haiku-4-5", DEFAULT_CLAUDE_MODEL),
+    "claude-haiku-4-5"
+  );
+  assert.equal(
+    resolveCloudModel(CLAUDE_MODELS, "retired-model", DEFAULT_CLAUDE_MODEL),
+    DEFAULT_CLAUDE_MODEL
+  );
+  assert.equal(
+    resolveCloudModel(CLAUDE_MODELS, null, DEFAULT_CLAUDE_MODEL),
+    DEFAULT_CLAUDE_MODEL
+  );
+});
+
+test("calls OpenAI gpt-6-luna with reasoning off and strict JSON output", async () => {
+  const { OpenAIProvider } = await import("../src/server/ai/providers/openai.ts");
+  let requestUrl;
+  let requestInit;
+
+  const mappings = await withMockedFetch(
+    async (input, init) => {
+      requestUrl = String(input);
+      requestInit = init;
+      return jsonResponse({
+        status: "completed",
+        output: [
+          { type: "reasoning", summary: [] },
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  results: [
+                    { index: 0, categoryName: "Groceries", isNew: false, confidence: 7 },
+                  ],
+                }),
+              },
+            ],
+          },
+        ],
+      });
+    },
+    () =>
+      new OpenAIProvider("sk-test-key", "gpt-6-luna").categorize(
+        SAMPLE_TRANSACTIONS,
+        SAMPLE_CATEGORIES
+      )
+  );
+
+  const body = JSON.parse(String(requestInit.body));
+  assert.equal(requestUrl, "https://api.openai.com/v1/responses");
+  assert.equal(requestInit.headers.Authorization, "Bearer sk-test-key");
+  assert.equal(body.model, "gpt-6-luna");
+  assert.deepEqual(body.reasoning, { effort: "none" });
+  assert.equal(body.store, false);
+  assert.equal(body.temperature, undefined);
+  assert.equal(body.text.format.type, "json_schema");
+  assert.equal(body.text.format.strict, true);
+  assert.equal(body.text.format.schema.additionalProperties, false);
+  assert.deepEqual(mappings, [
+    { index: 0, categoryName: "Groceries", isNew: false, confidence: 7 },
+  ]);
+});
+
+test("reports OpenAI HTTP errors with their status code", async () => {
+  const { OpenAIProvider } = await import("../src/server/ai/providers/openai.ts");
+
+  await withMockedFetch(
+    async () => jsonResponse({ error: { message: "Incorrect API key provided" } }, 401),
+    () =>
+      assert.rejects(
+        new OpenAIProvider("sk-bad").categorize(SAMPLE_TRANSACTIONS, SAMPLE_CATEGORIES),
+        /\(401\): Incorrect API key provided/
+      )
+  );
+});
+
+test("rejects truncated OpenAI responses instead of parsing partial JSON", async () => {
+  const { OpenAIProvider } = await import("../src/server/ai/providers/openai.ts");
+
+  await withMockedFetch(
+    async () =>
+      jsonResponse({
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output: [],
+      }),
+    () =>
+      assert.rejects(
+        new OpenAIProvider("sk-test").categorize(SAMPLE_TRANSACTIONS, SAMPLE_CATEGORIES),
+        /incomplete: max_output_tokens/
+      )
+  );
+});
+
+function claudeMessage(content) {
+  return jsonResponse({
+    id: "msg_test",
+    type: "message",
+    role: "assistant",
+    model: "claude-haiku-5-5",
+    content,
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    usage: { input_tokens: 10, output_tokens: 10 },
+  });
+}
+
+test("calls Claude Haiku 5.5 with thinking turned off", async () => {
+  const { ClaudeProvider } = await import("../src/server/ai/providers/claude.ts");
+  let body;
+
+  const mappings = await withMockedFetch(
+    async (_input, init) => {
+      body = JSON.parse(String(init.body));
+      return claudeMessage([
+        {
+          type: "text",
+          text: JSON.stringify([{ index: 0, categoryName: "Groceries", confidence: 6 }]),
+        },
+      ]);
+    },
+    () =>
+      new ClaudeProvider("sk-ant-test", "claude-haiku-5-5").categorize(
+        SAMPLE_TRANSACTIONS,
+        SAMPLE_CATEGORIES
+      )
+  );
+
+  assert.equal(body.model, "claude-haiku-5-5");
+  assert.deepEqual(body.thinking, { type: "disabled" });
+  assert.equal(body.temperature, undefined);
+  assert.deepEqual(mappings, [
+    { index: 0, categoryName: "Groceries", isNew: false, confidence: 6 },
+  ]);
+});
+
+test("leaves thinking unset for Claude Haiku 4.5, which only thinks when asked", async () => {
+  const { ClaudeProvider } = await import("../src/server/ai/providers/claude.ts");
+  let body;
+
+  await withMockedFetch(
+    async (_input, init) => {
+      body = JSON.parse(String(init.body));
+      return claudeMessage([{ type: "text", text: "[]" }]);
+    },
+    () =>
+      new ClaudeProvider("sk-ant-test", "claude-haiku-4-5").categorize(
+        SAMPLE_TRANSACTIONS,
+        SAMPLE_CATEGORIES
+      )
+  );
+
+  assert.equal(body.model, "claude-haiku-4-5");
+  assert.equal(body.thinking, undefined);
+});

@@ -186,8 +186,11 @@ export function testBankConnection(
 }
 
 export function saveAIConfig(config: {
-  provider: "claude" | "ollama" | "none";
+  provider: AppSettings["aiProvider"];
+  /** Claude or OpenAI key, depending on `provider`. Omit to keep the stored key. */
   apiKey?: string;
+  claudeModel?: string;
+  openaiModel?: string;
   ollamaUrl?: string;
   ollamaModel?: string;
 }) {

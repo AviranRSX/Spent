@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { listIntegrations, getSettings } from "@/lib/api";
 import { BANK_PROVIDERS, type DataSourceMode } from "@/lib/types";
+import { CLAUDE_MODELS, OPENAI_MODELS } from "@/lib/ai-models";
 import { ProviderBadge } from "./provider-badge";
 
 interface CompleteStepProps {
@@ -35,10 +36,12 @@ export function CompleteStep({ dataSourceMode, onFinish }: CompleteStepProps) {
 
   const aiLabel =
     settings?.aiProvider === "claude"
-      ? "Claude (Anthropic)"
-      : settings?.aiProvider === "ollama"
-        ? `Ollama · ${settings?.ollamaModel ?? "local"}`
-        : "Manual categorization";
+      ? `Claude · ${CLAUDE_MODELS.find((m) => m.id === settings.claudeModel)?.label ?? settings.claudeModel}`
+      : settings?.aiProvider === "openai"
+        ? `OpenAI · ${OPENAI_MODELS.find((m) => m.id === settings.openaiModel)?.label ?? settings.openaiModel}`
+        : settings?.aiProvider === "ollama"
+          ? `Ollama · ${settings?.ollamaModel ?? "local"}`
+          : "Manual categorization";
 
   return (
     <div className="mx-auto w-full max-w-[520px] space-y-7 text-center">

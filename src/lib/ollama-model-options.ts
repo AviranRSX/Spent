@@ -5,27 +5,32 @@ export interface OllamaModelInfo {
   recommended?: boolean;
 }
 
+// Measured on a sample of synthetic transactions, qwen3.5:9b categorized
+// noticeably better than the smaller Llama models, Hebrew merchant names
+// included. It needs about 8 GB of free RAM or VRAM.
+export const DEFAULT_OLLAMA_MODEL = "qwen3.5:9b";
+
 export const RECOMMENDED_OLLAMA_MODELS: OllamaModelInfo[] = [
+  {
+    name: "qwen3.5:9b",
+    sizeGb: 6.6,
+    description: "Recommended. Most accurate for categorizing. Needs about 8 GB of memory.",
+    recommended: true,
+  },
   {
     name: "llama3.2:3b",
     sizeGb: 2.0,
-    description: "Recommended. Fast and accurate enough for categorizing.",
-    recommended: true,
+    description: "Smaller and faster, for machines with less memory. Less accurate.",
   },
   {
     name: "llama3.2:1b",
     sizeGb: 1.3,
-    description: "Smallest and fastest. Slightly less accurate.",
+    description: "Smallest and fastest. Least accurate.",
   },
   {
     name: "llama3.1:8b",
     sizeGb: 4.7,
-    description: "Higher quality, slower, larger download.",
-  },
-  {
-    name: "qwen2.5:3b",
-    sizeGb: 1.9,
-    description: "Alternative 3B model from Alibaba.",
+    description: "Mid-size alternative. Slower than qwen3.5:9b and less accurate.",
   },
 ];
 

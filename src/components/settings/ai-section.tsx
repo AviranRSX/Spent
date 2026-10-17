@@ -14,7 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { RECOMMENDED_OLLAMA_MODELS, type AppSettings } from "@/lib/types";
-import { buildOllamaModelOptions } from "@/lib/ollama-model-options";
+import {
+  buildOllamaModelOptions,
+  DEFAULT_OLLAMA_MODEL,
+} from "@/lib/ollama-model-options";
+import {
+  CLAUDE_MODELS,
+  OPENAI_MODELS,
+  type CloudModelInfo,
+} from "@/lib/ai-models";
 import { getSettings, listOllamaModels, saveAIConfig } from "@/lib/api";
 import { OllamaModelStatus } from "./ollama-model-status";
 import { SectionShell, SettingCard } from "./section-shell";
@@ -70,8 +78,14 @@ function AIForm({ settings }: { settings: AppSettings }) {
     settings.aiProvider
   );
   const [apiKey, setApiKey] = useState("");
+  const [claudeModel, setClaudeModel] = useState(settings.claudeModel);
+  const [openaiModel, setOpenaiModel] = useState(settings.openaiModel);
   const [ollamaUrl, setOllamaUrl] = useState(settings.ollamaUrl);
-  const [ollamaModel, setOllamaModel] = useState(settings.ollamaModel);
+  // Someone not using Ollama yet starts from the recommended model rather
+  // than the old default still stored in their settings.
+  const [ollamaModel, setOllamaModel] = useState(
+    settings.aiProvider === "ollama" ? settings.ollamaModel : DEFAULT_OLLAMA_MODEL
+  );
   const ollamaModelsQuery = useQuery({
     queryKey: ["ollama-models", ollamaUrl],
     queryFn: () => listOllamaModels(ollamaUrl),
@@ -93,7 +107,12 @@ function AIForm({ settings }: { settings: AppSettings }) {
     mutationFn: () =>
       saveAIConfig({
         provider,
-        apiKey: provider === "claude" && apiKey ? apiKey : undefined,
+        apiKey:
+          (provider === "claude" || provider === "openai") && apiKey
+            ? apiKey
+            : undefined,
+        claudeModel: provider === "claude" ? claudeModel : undefined,
+        openaiModel: provider === "openai" ? openaiModel : undefined,
         ollamaUrl: provider === "ollama" ? ollamaUrl : undefined,
         ollamaModel: provider === "ollama" ? ollamaModel : undefined,
       }),
@@ -110,13 +129,18 @@ function AIForm({ settings }: { settings: AppSettings }) {
         title={t("providerCardTitle")}
         description={t("providerCardDescription")}
       >
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {(
             [
               {
                 id: "claude" as const,
                 title: t("providerClaudeTitle"),
                 desc: t("providerClaudeDesc"),
+              },
+              {
+                id: "openai" as const,
+                title: t("providerOpenAITitle"),
+                desc: t("providerOpenAIDesc"),
               },
               {
                 id: "ollama" as const,
@@ -132,7 +156,10 @@ function AIForm({ settings }: { settings: AppSettings }) {
           ).map((opt) => (
             <button
               key={opt.id}
-              onClick={() => setProvider(opt.id)}
+              onClick={() => {
+                if (opt.id !== provider) setApiKey("");
+                setProvider(opt.id);
+              }}
               className={`rounded-xl border p-4 text-start transition-colors ${
                 provider === opt.id
                   ? "border-primary bg-primary/5"
@@ -153,19 +180,32 @@ function AIForm({ settings }: { settings: AppSettings }) {
           title={t("claudeKeyCardTitle")}
           description={t("claudeKeyCardDescription")}
         >
-          <div className="space-y-2">
-            <Label htmlFor="claude-key">{t("apiKeyLabel")}</Label>
-            <Input
-              id="claude-key"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("leaveBlankHint")}
-            </p>
-          </div>
+          <CloudProviderFields
+            keyId="claude-key"
+            keyPlaceholder="sk-ant-..."
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            models={CLAUDE_MODELS}
+            model={claudeModel}
+            setModel={setClaudeModel}
+          />
+        </SettingCard>
+      )}
+
+      {provider === "openai" && (
+        <SettingCard
+          title={t("openaiKeyCardTitle")}
+          description={t("openaiKeyCardDescription")}
+        >
+          <CloudProviderFields
+            keyId="openai-key"
+            keyPlaceholder="sk-..."
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            models={OPENAI_MODELS}
+            model={openaiModel}
+            setModel={setOpenaiModel}
+          />
         </SettingCard>
       )}
 
@@ -246,5 +286,67 @@ function AIForm({ settings }: { settings: AppSettings }) {
         </Button>
       </div>
     </>
+  );
+}
+
+function CloudProviderFields({
+  keyId,
+  keyPlaceholder,
+  apiKey,
+  setApiKey,
+  models,
+  model,
+  setModel,
+}: {
+  keyId: string;
+  keyPlaceholder: string;
+  apiKey: string;
+  setApiKey: (value: string) => void;
+  models: CloudModelInfo[];
+  model: string;
+  setModel: (value: string) => void;
+}) {
+  const t = useTranslations("settings.ai");
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor={keyId}>{t("apiKeyLabel")}</Label>
+        <Input
+          id={keyId}
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={keyPlaceholder}
+        />
+        <p className="text-xs text-muted-foreground">{t("leaveBlankHint")}</p>
+      </div>
+      <div className="space-y-2">
+        <Label>{t("modelLabel")}</Label>
+        <Select value={model} onValueChange={(v) => v && setModel(v)}>
+          <SelectTrigger>
+            <SelectValue>
+              {(value: string) =>
+                models.find((m) => m.id === value)?.label ?? value
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {models.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                <div className="flex items-center gap-2">
+                  <span>{m.label}</span>
+                  {m.recommended && (
+                    <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                      {t("recommendedTag")}
+                    </span>
+                  )}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{t("cloudModelHint")}</p>
+      </div>
+    </div>
   );
 }

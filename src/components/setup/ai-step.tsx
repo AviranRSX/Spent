@@ -10,7 +10,17 @@ import {
   RECOMMENDED_OLLAMA_MODELS,
   type OllamaModelInfo,
 } from "@/lib/types";
-import { buildOllamaModelOptions } from "@/lib/ollama-model-options";
+import {
+  buildOllamaModelOptions,
+  DEFAULT_OLLAMA_MODEL,
+} from "@/lib/ollama-model-options";
+import {
+  CLAUDE_MODELS,
+  DEFAULT_CLAUDE_MODEL,
+  DEFAULT_OPENAI_MODEL,
+  OPENAI_MODELS,
+  type CloudModelInfo,
+} from "@/lib/ai-models";
 import {
   listOllamaModels,
   pullOllamaModel,
@@ -18,7 +28,7 @@ import {
   type PullEvent,
 } from "@/lib/api";
 
-type AIChoice = "claude" | "ollama" | "none";
+type AIChoice = "claude" | "openai" | "ollama" | "none";
 
 interface AIStepProps {
   onComplete: () => void;
@@ -35,6 +45,7 @@ interface PullState {
 
 const TINTS = {
   claude: { bg: "#fad6c0", mid: "#e89968", ink: "#7a4222" },
+  openai: { bg: "#d6e4f0", mid: "#7fa6c9", ink: "#2e4a63" },
   ollama: { bg: "#dbedd1", mid: "#a8d18d", ink: "#3e5a2e" },
   none: { bg: "#e6dfd1", mid: "#a89978", ink: "#5b5240" },
 } as const;
@@ -56,6 +67,12 @@ const PROVIDERS: ProviderMeta[] = [
     recommended: true,
   },
   {
+    id: "openai",
+    title: "OpenAI",
+    tagline: "OpenAI API, fast and low cost",
+    icon: "◇",
+  },
+  {
     id: "ollama",
     title: "Ollama",
     tagline: "Runs locally, free and private",
@@ -72,9 +89,12 @@ const PROVIDERS: ProviderMeta[] = [
 export function AIStep({ onComplete, onBack }: AIStepProps) {
   const [choice, setChoice] = useState<AIChoice>("claude");
   const [apiKey, setApiKey] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [claudeModel, setClaudeModel] = useState(DEFAULT_CLAUDE_MODEL);
+  const [openaiModel, setOpenaiModel] = useState(DEFAULT_OPENAI_MODEL);
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
-  const [ollamaModel, setOllamaModel] = useState("llama3.2:3b");
+  const [ollamaModel, setOllamaModel] = useState(DEFAULT_OLLAMA_MODEL);
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
   const [pullState, setPullState] = useState<PullState | null>(null);
@@ -116,6 +136,7 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
   const canContinue =
     choice === "none" ||
     (choice === "claude" && /^sk-ant-/.test(apiKey) && apiKey.length > 25) ||
+    (choice === "openai" && /^sk-/.test(openaiKey) && openaiKey.length > 20) ||
     (choice === "ollama" && modelInstalled);
 
   const handlePull = () => {
@@ -158,7 +179,14 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
     try {
       await saveAIConfig({
         provider: choice,
-        apiKey: choice === "claude" ? apiKey : undefined,
+        apiKey:
+          choice === "claude"
+            ? apiKey
+            : choice === "openai"
+              ? openaiKey
+              : undefined,
+        claudeModel: choice === "claude" ? claudeModel : undefined,
+        openaiModel: choice === "openai" ? openaiModel : undefined,
         ollamaUrl: choice === "ollama" ? ollamaUrl : undefined,
         ollamaModel: choice === "ollama" ? ollamaModel : undefined,
       });
@@ -203,11 +231,31 @@ export function AIStep({ onComplete, onBack }: AIStepProps) {
                 >
                   <div className="pt-1.5">
                     {p.id === "claude" && (
-                      <ClaudeConfig
+                      <CloudConfig
+                        inputId="claude-api-key"
+                        keyUrl="https://console.anthropic.com"
+                        placeholder="sk-ant-api03-..."
                         apiKey={apiKey}
                         setApiKey={setApiKey}
                         showKey={showKey}
                         setShowKey={setShowKey}
+                        models={CLAUDE_MODELS}
+                        model={claudeModel}
+                        setModel={setClaudeModel}
+                      />
+                    )}
+                    {p.id === "openai" && (
+                      <CloudConfig
+                        inputId="openai-api-key"
+                        keyUrl="https://platform.openai.com/api-keys"
+                        placeholder="sk-proj-..."
+                        apiKey={openaiKey}
+                        setApiKey={setOpenaiKey}
+                        showKey={showKey}
+                        setShowKey={setShowKey}
+                        models={OPENAI_MODELS}
+                        model={openaiModel}
+                        setModel={setOpenaiModel}
                       />
                     )}
                     {p.id === "ollama" && (
@@ -314,25 +362,37 @@ function ProviderRow({
   );
 }
 
-function ClaudeConfig({
+function CloudConfig({
+  inputId,
+  keyUrl,
+  placeholder,
   apiKey,
   setApiKey,
   showKey,
   setShowKey,
+  models,
+  model,
+  setModel,
 }: {
+  inputId: string;
+  keyUrl: string;
+  placeholder: string;
   apiKey: string;
   setApiKey: (v: string) => void;
   showKey: boolean;
   setShowKey: (v: boolean) => void;
+  models: CloudModelInfo[];
+  model: string;
+  setModel: (v: string) => void;
 }) {
   return (
     <div className="space-y-2 rounded-xl border border-border bg-card/60 p-4">
       <div className="flex items-center justify-between gap-2">
-        <Label htmlFor="claude-api-key" className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+        <Label htmlFor={inputId} className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
           API key
         </Label>
         <a
-          href="https://console.anthropic.com"
+          href={keyUrl}
           target="_blank"
           rel="noreferrer"
           className="text-[11px] font-medium text-primary hover:underline"
@@ -342,11 +402,11 @@ function ClaudeConfig({
       </div>
       <div className="relative">
         <Input
-          id="claude-api-key"
+          id={inputId}
           type={showKey ? "text" : "password"}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="sk-ant-api03-..."
+          placeholder={placeholder}
           className="font-mono pe-14"
         />
         <button
@@ -360,6 +420,37 @@ function ClaudeConfig({
       <p className="text-[11px] text-muted-foreground">
         Encrypted with AES-256-GCM and stored locally.
       </p>
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+          Model
+        </Label>
+        <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {models.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setModel(m.id)}
+              className={`flex items-baseline justify-between gap-1 rounded-lg border bg-background p-2 text-start transition-colors ${
+                model === m.id
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-primary/40"
+              }`}
+            >
+              <span className="truncate text-[11px] font-bold tracking-tight">
+                {m.label}
+              </span>
+              {m.recommended && (
+                <span className="shrink-0 rounded-full bg-primary/10 px-1 py-0 text-[8px] font-bold uppercase tracking-wider text-primary">
+                  rec
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Reasoning is turned off, which keeps categorizing fast and cheap.
+        </p>
+      </div>
     </div>
   );
 }
@@ -503,7 +594,7 @@ function ManualNote() {
     <div className="rounded-xl border border-border bg-card/60 p-4 text-[12px] leading-relaxed text-muted-foreground">
       Spent will leave transactions <span className="text-foreground">uncategorized</span>;
       you can assign categories from the transactions table any time. Switch to
-      Claude or Ollama later in{" "}
+      Claude, OpenAI or Ollama later in{" "}
       <span className="font-bold text-foreground">Settings → AI</span>.
     </div>
   );

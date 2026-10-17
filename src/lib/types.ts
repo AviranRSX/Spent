@@ -382,12 +382,25 @@ export interface ImportSource {
   transactionCount: number;
 }
 
+export type AIProviderId = "claude" | "openai" | "ollama" | "none";
+
+export function isAIProviderId(value: unknown): value is AIProviderId {
+  return (
+    value === "claude" ||
+    value === "openai" ||
+    value === "ollama" ||
+    value === "none"
+  );
+}
+
 export interface AppSettings {
   monthsToSync: number;
   dataSourceMode: DataSourceMode | null;
-  aiProvider: "claude" | "ollama" | "none";
+  aiProvider: AIProviderId;
   ollamaUrl: string;
   ollamaModel: string;
+  claudeModel: string;
+  openaiModel: string;
   showBrowser: boolean;
   paydayDay: number;
   monthlyTarget: number | null;

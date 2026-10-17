@@ -20,6 +20,7 @@ XLSX imports. AI-categorized. Yours.
 [![SQLite](https://img.shields.io/badge/SQLite-WAL-003B57?logo=sqlite&logoColor=white&style=flat-square)](https://sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](#license)
 [![Status: Beta](https://img.shields.io/badge/Status-Beta-blueviolet?style=flat-square)](#features)
+[![Android APK](https://img.shields.io/badge/Android-APK-3DDC84?logo=android&logoColor=white&style=flat-square)](#android-app)
 
 </div>
 
@@ -117,7 +118,7 @@ Toggle between English (default) and עברית from **Settings → Appearance**
 <td colspan="3" valign="top">
 
 ### 📱 Android companion
-Opt-in and off by default. Browse Home, Budget, Transactions, Credit card, and Trips on your phone, and fix categories or approve reviews on the go. The PC writes a passphrase-encrypted snapshot to a folder in your own Google Drive, and phone edits come back the same way. You build and sideload the APK yourself. See the [phone app guide](docs/phone-app.md).
+Opt-in and off by default. Browse Home, Budget, Transactions, Credit card, and Trips on your phone, and fix categories or approve reviews on the go. The PC writes a passphrase-encrypted snapshot to a folder in your own Google Drive, and phone edits come back the same way. You build and sideload the APK yourself. See [Android app](#android-app) and the [phone app guide](docs/phone-app.md).
 
 </td>
 </tr>
@@ -125,22 +126,32 @@ Opt-in and off by default. Browse Home, Budget, Transactions, Credit card, and T
 
 ## Screenshots
 
+All screenshots come from the synthetic Demo workspace (`npm run seed:demo`). No real data.
+
 <table>
 <tr>
-<td width="50%" align="center"><b>Dashboard - light</b></td>
-<td width="50%" align="center"><b>Dashboard - dark</b></td>
+<td width="50%" align="center"><b>Home - light</b></td>
+<td width="50%" align="center"><b>Home - dark</b></td>
 </tr>
 <tr>
-<td><img src="public/screenshots/dashboard-light.png" alt="Dashboard light mode"></td>
-<td><img src="public/screenshots/dashboard-dark.png" alt="Dashboard dark mode"></td>
+<td><img src="public/screenshots/dashboard-light.png" alt="Home page in light mode"></td>
+<td><img src="public/screenshots/dashboard-dark.png" alt="Home page in dark mode"></td>
 </tr>
 <tr>
+<td align="center"><b>Budget</b></td>
 <td align="center"><b>Transactions</b></td>
-<td align="center"><b>Setup wizard</b></td>
 </tr>
 <tr>
+<td><img src="public/screenshots/budget-light.png" alt="Monthly budget with pace tracking"></td>
 <td><img src="public/screenshots/transactions-light.png" alt="Transactions page"></td>
-<td><img src="public/screenshots/setup-bank-light.png" alt="Setup wizard bank picker"></td>
+</tr>
+<tr>
+<td align="center"><b>Credit card</b></td>
+<td align="center"><b>Trips</b></td>
+</tr>
+<tr>
+<td><img src="public/screenshots/credit-card-light.png" alt="Credit card spending view"></td>
+<td><img src="public/screenshots/trips-light.png" alt="Trip totals, categories and daily spend"></td>
 </tr>
 <tr>
 <td align="center"><b>Categories</b></td>
@@ -151,12 +162,30 @@ Opt-in and off by default. Browse Home, Budget, Transactions, Credit card, and T
 <td><img src="public/screenshots/settings-ai-light.png" alt="AI provider settings"></td>
 </tr>
 <tr>
-<td colspan="2" align="center"><b>Bank accounts</b></td>
+<td align="center"><b>Hebrew (RTL)</b></td>
+<td align="center"><b>Phone sync</b></td>
 </tr>
 <tr>
-<td colspan="2"><img src="public/screenshots/settings-bank-light.png" alt="Bank accounts settings"></td>
+<td><img src="public/screenshots/dashboard-hebrew-light.png" alt="Home page in Hebrew, right to left"></td>
+<td><img src="public/screenshots/settings-phone-sync-light.png" alt="Phone sync settings for the Android app"></td>
 </tr>
 </table>
+
+## Android app
+
+Spent has an Android companion app, shipped as an APK that you build and sideload yourself. There is no Play Store listing and no prebuilt download: the APK is signed with your own key and carries your own Google sign-in client id.
+
+- **What it does:** Home, Budget, Transactions, Credit card, and Trips on your phone, for every workspace, offline from the last sync. You can change a category or approve a review; those edits flow back to the PC.
+- **How it syncs:** the PC writes a passphrase-encrypted snapshot (AES-256-GCM) into a Google Drive folder you choose, and the phone reads it from there. The PC never talks to Google itself, and bank logins and API keys are never in the snapshot.
+- **What stays on the PC:** imports, AI categorization, and all settings.
+
+To get it, turn on **Settings > Phone sync** on the PC, then build the APK:
+
+```bash
+npm run mobile:apk   # needs JDK 21, the Android SDK, and SPENT_KEYSTORE_* env vars
+```
+
+The APK lands in `android/app/build/outputs/apk/release/app-release.apk`. Copy it to the phone and install it. The [phone app guide](docs/phone-app.md) walks through Google Cloud setup, the keystore, the build, installing, and updating, step by step.
 
 ## How it works
 
@@ -299,6 +328,7 @@ The statistics are calculated from transactions already stored in the local SQLi
 | Update the always-on app after editing | `npm run service:reload` |
 | Test XLSX parsers and templates | `npm run test:imports` |
 | Test transaction logic helpers | `npm run test:logic` |
+| Build the Android APK | `npm run mobile:apk` (see [Android app](#android-app)) |
 
 Rare cases:
 
@@ -377,6 +407,7 @@ spent/
 │   │   └── transactions/     Filters, widgets, transaction page
 │   ├── i18n/                 English and Hebrew messages
 │   ├── lib/                  Shared types, API client, import parsers, UI helpers
+│   ├── mobile/               Android app: on-device router, sql.js, Drive sync
 │   └── server/
 │       ├── ai/               Claude and Ollama providers plus response parsing
 │       ├── db/               SQLite singleton, migrations, query helpers
@@ -384,6 +415,7 @@ spent/
 │       ├── lib/              Encryption, dedup, transfers, pacing, workspace helpers
 │       ├── scrapers/         Disabled-by-default scraper wrapper
 │       └── sync/             Shared categorization orchestration
+├── android/                  Capacitor Android project for the phone app
 ├── menubar/                  macOS and Windows native companions
 ├── scripts/                  Setup, service, docs screenshots, focused tests
 ├── website/                  Astro and Starlight docs site

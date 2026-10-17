@@ -950,7 +950,8 @@
     }
   },
   "ollamaModels": {
-    "qwen3_5_9b": "Recommended. Most accurate for categorizing. Needs about 8 GB of memory.",
+    "qwen3_8_27b": "Recommended for a GPU with 24 GB of memory. Most accurate for categorizing.",
+    "qwen3_5_9b": "Recommended for most computers. Accurate and light. Needs about 8 GB of memory.",
     "llama3_2_3b": "Smaller and faster, for machines with less memory. Less accurate.",
     "llama3_2_1b": "Smallest and fastest. Least accurate.",
     "llama3_1_8b": "Mid-size alternative. Slower than qwen3.5:9b and less accurate."

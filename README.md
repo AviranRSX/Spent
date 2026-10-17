@@ -241,13 +241,13 @@ That flag is in [`src/lib/features.ts`](src/lib/features.ts). With the flag off,
 
 | | **Claude** (Anthropic) | **OpenAI** | **Ollama** (local) | **None** |
 |---|---|---|---|---|
-| Recommended model | Claude Haiku 5.5 | GPT-6 Luna | `qwen3.5:9b` | |
+| Recommended model | Claude Haiku 5.5 | GPT-6 Luna | `qwen3.5:9b`, or `qwen3.8:27b` on a 24 GB GPU | |
 | Cost | Paid API, roughly $0.02 per 1,000 transactions | Paid API, roughly $0.02 per 1,000 transactions | Free | Free |
 | Privacy | Merchant names and amounts go to Anthropic | Merchant names and amounts go to OpenAI | Nothing leaves your machine | Nothing leaves your machine |
 | Network | `api.anthropic.com` | `api.openai.com` | `localhost:11434` | Offline |
 | Setup | API key | API key | Install Ollama and pull a model (6.6 GB, about 8 GB of memory) | Nothing |
 
-Cloud models run with reasoning turned off: categorizing a batch is a short classification task, and reasoning tokens would only add cost and latency. Claude also offers Claude Haiku 4.5 in the model picker. On Ollama, smaller Llama models are offered for machines with less memory, and any installed model can be picked.
+Cloud models run with reasoning turned off: categorizing a batch is a short classification task, and reasoning tokens would only add cost and latency. Claude also offers Claude Haiku 4.5 in the model picker. On Ollama, `qwen3.8:27b` (17 GB) is more accurate if you have a GPU with 24 GB of memory, such as an RTX 3090 or 4090. Smaller Llama models are offered for machines with less memory, and any installed model can be picked.
 
 The OpenAI provider sends `store: false`, so OpenAI does not keep the responses for later retrieval.
 

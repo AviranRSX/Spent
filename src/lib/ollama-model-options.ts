@@ -7,14 +7,22 @@ export interface OllamaModelInfo {
 
 // Measured on a sample of synthetic transactions, qwen3.5:9b categorized
 // noticeably better than the smaller Llama models, Hebrew merchant names
-// included. It needs about 8 GB of free RAM or VRAM.
+// included. It needs about 8 GB of free RAM or VRAM, so it stays the default.
+// On a 24 GB GPU, qwen3.8:27b was more accurate on expenses at almost the same
+// speed. gemma4:26b was twice as fast but less accurate on income.
 export const DEFAULT_OLLAMA_MODEL = "qwen3.5:9b";
 
 export const RECOMMENDED_OLLAMA_MODELS: OllamaModelInfo[] = [
   {
+    name: "qwen3.8:27b",
+    sizeGb: 17,
+    description: "Recommended for a GPU with 24 GB of memory. Most accurate for categorizing.",
+    recommended: true,
+  },
+  {
     name: "qwen3.5:9b",
     sizeGb: 6.6,
-    description: "Recommended. Most accurate for categorizing. Needs about 8 GB of memory.",
+    description: "Recommended for most computers. Accurate and light. Needs about 8 GB of memory.",
     recommended: true,
   },
   {

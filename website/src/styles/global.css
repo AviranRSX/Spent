@@ -628,8 +628,8 @@ html { scroll-behavior: smooth; }
 	gap: 1rem;
 	margin: 2rem 0;
 }
-@media (min-width: 60rem) {
-	.docs-providergrid { grid-template-columns: repeat(3, 1fr); }
+@media (min-width: 40rem) {
+	.docs-providergrid { grid-template-columns: repeat(2, 1fr); }
 }
 .docs-provider {
 	display: flex;
@@ -684,5 +684,6 @@ html { scroll-behavior: smooth; }
 	text-underline-offset: 3px;
 }
 .docs-provider--claude { --prov-accent: var(--spent-orange); }
+.docs-provider--openai { --prov-accent: var(--spent-pink); }
 .docs-provider--ollama { --prov-accent: var(--spent-vibrant); }
 .docs-provider--manual { --prov-accent: var(--spent-blue); }

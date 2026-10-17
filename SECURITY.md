@@ -9,7 +9,7 @@ deploy it, almost none of the assumptions hold.
 | Asset | Location | How it's protected |
 |-------|----------|--------------------|
 | Bank credentials | `data/spent.db` (`bank_credentials` table) | Encrypted with AES-256-GCM |
-| Claude API key | `data/spent.db` (`settings` table) | Encrypted with AES-256-GCM |
+| Claude and OpenAI API keys | `data/spent.db` (`settings` table) | Encrypted with AES-256-GCM |
 | Encryption key | `data/.encryption-key` | File permissions `0o600` (owner read-write only). **Not encrypted itself.** |
 | Transaction data | `data/spent.db` (`transactions` table). With phone sync on, also a copy in your Google Drive folder and on each phone | Plaintext inside the SQLite file on the PC. The Drive and phone copies are encrypted with your passphrase (see "Phone sync") |
 | Phone sync snapshot | `snapshot.spent.enc` in the Google Drive folder, and a copy in each phone's app-private storage | AES-256-GCM, key derived from your passphrase |
@@ -20,7 +20,7 @@ deploy it, almost none of the assumptions hold.
 
 ## What's protected at rest
 
-Bank credentials and the Claude API key never sit on disk in plaintext.
+Bank credentials and the Claude and OpenAI API keys never sit on disk in plaintext.
 They're encrypted with a 32-byte random key (`data/.encryption-key`)
 using AES-256-GCM with a fresh IV per write. Anyone who reads the DB
 file alone cannot decrypt them.
@@ -51,7 +51,7 @@ encrypted change files that phones write there. Install guide:
   reference them), but their `credentials_encrypted`, `iv` and
   `auth_tag` columns are blanked.
 - `settings` and `workspace_settings` rows whose key ends in
-  `_encrypted`, `_iv` or `_auth_tag` (for example the Claude API key),
+  `_encrypted`, `_iv` or `_auth_tag` (for example the Claude and OpenAI API keys),
   or starts with `phone_sync_` (the passphrase and sync state), are
   deleted.
 - The file is rewritten with `VACUUM` so deleted values do not linger
@@ -101,6 +101,8 @@ local network or the internet. The library only contacts:
 
 - Your bank's domains (e.g., `digital.isracard.co.il`): via Puppeteer
 - `api.anthropic.com`: only if Claude is your AI provider
+- `api.openai.com`: only if OpenAI is your AI provider. Requests are
+  sent with `store: false`
 - `localhost:11434`: only if Ollama is your AI provider
 - `www.google.com`: favicon API for bank logos (only the domain
   name leaves your machine, no credentials)
@@ -155,6 +157,8 @@ The credential-touching libraries are pinned to exact versions in
 - `israeli-bank-scrapers`: scrapes your bank with your password
 - `better-sqlite3`: reads/writes the DB file
 - `@anthropic-ai/sdk`: sends data to Claude
+
+The OpenAI provider uses the built-in `fetch`, so it adds no dependency.
 
 Run `npm run security:audit` to check for known vulnerabilities, and
 `npm run security:outdated` to see if anything is out of date. Re-audit

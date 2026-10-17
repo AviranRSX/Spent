@@ -27,7 +27,7 @@ Both files are local. Spent never uploads them. There is no "Spent cloud."
 
 ## How credentials are encrypted
 
-Bank passwords (and your Claude API key, if you use one) are encrypted with **AES-256-GCM** before being written to the database. The 32-byte key in `data/.encryption-key` is the one used to encrypt and decrypt.
+Bank passwords (and your Claude or OpenAI API key, if you use one) are encrypted with **AES-256-GCM** before being written to the database. The 32-byte key in `data/.encryption-key` is the one used to encrypt and decrypt.
 
 This means:
 
@@ -42,8 +42,8 @@ This means:
 
 Three kinds of traffic happen during a sync:
 
-1. **Bank logins** — Spent opens a headless Chromium tab and logs into your bank's website using the credentials you provided. This traffic goes directly between your computer and your bank.
-2. **AI categorization** — if you chose Claude, **only the merchant name and amount** of each new transaction are sent to Anthropic's API in batches of 50. Your bank credentials are never sent. If you chose Ollama, this traffic stays on your machine.
+1. **Bank logins**: Spent opens a headless Chromium tab and logs into your bank's website using the credentials you provided. This traffic goes directly between your computer and your bank.
+2. **AI categorization**: if you chose Claude or OpenAI, **only the merchant name and amount** of each new transaction are sent to that company's API in batches of 50. Your bank credentials are never sent. If you chose Ollama, this traffic stays on your machine.
 3. **No analytics, no telemetry, no crash reports.** Spent does not phone home. Ever.
 
 ## The threat model

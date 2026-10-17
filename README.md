@@ -37,7 +37,7 @@ XLSX imports. AI-categorized. Yours.
 
 Israeli financial exports are awkward, YNAB does not handle ILS the way many local users expect, and cloud finance apps usually ask you to hand over sensitive account data. Spent is for people who would rather run a personal finance app on their own laptop.
 
-The current app flow is file-first. Export XLSX files from supported Israeli institutions, load them from the dashboard, preview parsed rows and duplicates, and import them into a local SQLite database. Spent can then categorize uncategorized transactions with Claude, local Ollama, or no AI at all.
+The current app flow is file-first. Export XLSX files from supported Israeli institutions, load them from the dashboard, preview parsed rows and duplicates, and import them into a local SQLite database. Spent can then categorize uncategorized transactions with Claude, OpenAI, local Ollama, or no AI at all.
 
 The trade-off is honest: you self-host, keep the database on your machine, and choose when to import files. In return you get a fast, polished, offline-friendly dashboard that never phones home except to the AI provider you configure.
 
@@ -56,7 +56,7 @@ Load local XLSX files from Max, Isracard, CAL, Hapoalim, and Leumi templates. Fi
 <td width="33%" valign="top">
 
 ### 🤖 AI categorization
-Choose Claude for best accuracy, Ollama for local LLMs, or no AI. Categorization runs in batches and low-confidence results are marked for review.
+Choose Claude or OpenAI with your own API key, Ollama for a free local model that keeps everything on your machine, or no AI. Categorization runs in batches and low-confidence results are marked for review.
 
 </td>
 <td width="33%" valign="top">
@@ -213,7 +213,7 @@ flowchart LR
     end
 ```
 
-The default flow keeps bank credentials out of the app. XLSX files are read in memory by the browser/server request, previewed, and written into `data/spent.db` only after you click Import. The only optional outbound traffic is to `api.anthropic.com` for Claude or `localhost:11434` for Ollama.
+The default flow keeps bank credentials out of the app. XLSX files are read in memory by the browser/server request, previewed, and written into `data/spent.db` only after you click Import. The only optional outbound traffic is to `api.anthropic.com` for Claude, `api.openai.com` for OpenAI, or `localhost:11434` for Ollama.
 
 ## Supported import formats
 
@@ -239,18 +239,19 @@ That flag is in [`src/lib/features.ts`](src/lib/features.ts). With the flag off,
 
 ## AI providers
 
-| | **Claude** (Anthropic) | **Ollama** (local) | **None** |
-|---|---|---|---|
-| Cost | Paid API usage | Free | Free |
-| Accuracy | Best | Good, model-dependent | Manual |
-| Network | `api.anthropic.com` | `localhost:11434` | Offline |
-| Setup | API key | Install Ollama and pull a model | Nothing |
+| | **Claude** (Anthropic) | **OpenAI** | **Ollama** (local) | **None** |
+|---|---|---|---|---|
+| Recommended model | Claude Haiku 5.5 | GPT-6 Luna | `qwen3.5:9b` | |
+| Cost | Paid API, roughly $0.02 per 1,000 transactions | Paid API, roughly $0.02 per 1,000 transactions | Free | Free |
+| Privacy | Merchant names and amounts go to Anthropic | Merchant names and amounts go to OpenAI | Nothing leaves your machine | Nothing leaves your machine |
+| Network | `api.anthropic.com` | `api.openai.com` | `localhost:11434` | Offline |
+| Setup | API key | API key | Install Ollama and pull a model (6.6 GB, about 8 GB of memory) | Nothing |
 
-Default Claude model: `claude-haiku-4-5-20251001`.
+Cloud models run with reasoning turned off: categorizing a batch is a short classification task, and reasoning tokens would only add cost and latency. Claude also offers Claude Haiku 4.5 in the model picker. On Ollama, smaller Llama models are offered for machines with less memory, and any installed model can be picked.
 
-Default Ollama model: `llama3.2:3b`.
+The OpenAI provider sends `store: false`, so OpenAI does not keep the responses for later retrieval.
 
-You can change providers any time from **Settings → AI**. Existing categorizations are kept.
+You can change providers and models any time from **Settings → AI**. Existing categorizations are kept.
 
 ## Requirements
 
@@ -260,7 +261,7 @@ You can change providers any time from **Settings → AI**. Existing categorizat
   - macOS: Xcode Command Line Tools with `xcode-select --install`
   - Windows: .NET 8 SDK with `winget install Microsoft.DotNet.SDK.8`
 - XLSX exports from a supported template
-- Optional: Claude API key or local Ollama
+- Optional: a Claude or OpenAI API key, or local Ollama
 
 ## Install
 
@@ -285,7 +286,7 @@ Open **`http://spent.localhost:41234`** and bookmark it.
 
 In the browser:
 
-1. **Choose an AI provider** - Claude, Ollama, or none.
+1. **Choose an AI provider** - Claude, OpenAI, Ollama, or none.
 2. **Set your monthly ceiling** - total spend you want to stay under each month.
 3. **Set per-category budgets** - type an amount on any category to budget it, or leave it blank to track without a limit.
 4. **Open the dashboard**.
@@ -370,7 +371,7 @@ To wipe all local app data, delete `data/`.
 | Concern | Defense |
 |---|---|
 | Local data | SQLite database under `data/`, WAL mode, gitignored |
-| Sensitive settings | AES-256-GCM for encrypted settings such as Claude API keys and scraper credentials when scraper mode is enabled |
+| Sensitive settings | AES-256-GCM for encrypted settings such as Claude and OpenAI API keys and scraper credentials when scraper mode is enabled |
 | Network exposure | Production service binds to `127.0.0.1` only |
 | Browser CSRF | Origin and Referer validation on mutation routes |
 | File import | XLSX files are parsed in memory and committed only after preview |
@@ -409,7 +410,7 @@ spent/
 │   ├── lib/                  Shared types, API client, import parsers, UI helpers
 │   ├── mobile/               Android app: on-device router, sql.js, Drive sync
 │   └── server/
-│       ├── ai/               Claude and Ollama providers plus response parsing
+│       ├── ai/               Claude, OpenAI and Ollama providers plus response parsing
 │       ├── db/               SQLite singleton, migrations, query helpers
 │       ├── imports/          Import preview and commit flow
 │       ├── lib/              Encryption, dedup, transfers, pacing, workspace helpers
@@ -462,7 +463,7 @@ To reset state, delete `data/spent.db*` and `data/.encryption-key`.
 - **Linux: "systemd user instance not available"**: run `loginctl enable-linger $USER`.
 - **Windows: hosts edit fails or `spent.localhost` does not resolve**: rerun install from an elevated PowerShell so it can edit `C:\Windows\System32\drivers\etc\hosts`. `http://127.0.0.1:41234` always works as a fallback.
 - **Import preview shows row errors**: check that each file is assigned to the matching template. Max, Isracard, and Hapoalim exports use different headers and date formats.
-- **Ollama categorization fails**: make sure Ollama is running and the selected model is installed, for example `ollama pull llama3.2:3b`.
+- **Ollama categorization fails**: make sure Ollama is running and the selected model is installed, for example `ollama pull qwen3.5:9b`. On a machine with less than about 8 GB of free memory, pick a smaller model such as `llama3.2:3b`.
 
 ## Roadmap
 
@@ -507,4 +508,4 @@ Built on the shoulders of:
 - [`shadcn/ui`](https://ui.shadcn.com/) on top of [`base-ui`](https://base-ui.com/)
 - [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3)
 - [`next-intl`](https://next-intl.dev/) for English and Hebrew i18n
-- [Anthropic Claude](https://www.anthropic.com/) and [Ollama](https://ollama.com/)
+- [Anthropic Claude](https://www.anthropic.com/), [OpenAI](https://openai.com/) and [Ollama](https://ollama.com/)

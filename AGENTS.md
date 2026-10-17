@@ -95,7 +95,7 @@ Spent does not track investments themselves (balances, returns, portfolios).
 - **better-sqlite3** (WAL mode). It and `israeli-bank-scrapers` must stay in `serverExternalPackages` in `next.config.ts` because native bindings cannot be bundled.
 - **TanStack Query** for client data fetching, **Recharts** for charts, **framer-motion** for animation.
 - **next-intl** with English (default) and Hebrew (RTL). Locale comes from the `NEXT_LOCALE` cookie. Messages live in `src/i18n/messages/{en,he}.json`. Add every new user-facing string to both files.
-- **AI providers:** Claude (`@anthropic-ai/sdk`) or local Ollama, or none.
+- **AI providers:** Claude (`@anthropic-ai/sdk`), OpenAI (Responses API over `fetch`), local Ollama, or none. Cloud requests turn reasoning off (Claude `thinking: {type: "disabled"}`, OpenAI `reasoning.effort: "none"`); Ollama requests send `think: false`.
 
 ## Conventions
 
@@ -201,8 +201,9 @@ A workspace is a data scope, not an account. One local user can keep separate wo
 - `src/server/db/queries/transactions.ts`: dedup-on-insert and transaction queries.
 - `src/lib/trips/`: trip membership, detection, totals and validation (pure, node-testable).
 - `src/server/db/queries/trips.ts`, `src/server/trips/detection.ts`: trip queries and suggestion detection.
-- `src/server/ai/factory.ts`: returns `ClaudeProvider`, `OllamaProvider`, or null.
-- `src/server/ai/prompts.ts`: categorization prompt shared by Claude and Ollama.
+- `src/server/ai/factory.ts`: returns `ClaudeProvider`, `OpenAIProvider`, `OllamaProvider`, or null.
+- `src/server/ai/prompts.ts`: categorization prompt shared by every provider.
+- `src/lib/ai-models.ts`: Claude and OpenAI model lists and defaults. `src/lib/ollama-model-options.ts`: recommended Ollama models and `DEFAULT_OLLAMA_MODEL`.
 - `src/server/api-handlers/`: GET handlers shared by the desktop API routes and the phone router (`src/mobile/router.ts`).
 - `src/server/lib/category-decisions.ts`: recategorize and approve writes, shared by the desktop routes, the phone, and the PC change applier. Sets `category_decided_at`.
 - `src/lib/phone-sync/`: shared formats: `crypto.ts` (envelope), `format.ts` (constants and file names), `changes.ts` (change file), `outbox.ts`, `scheduler.ts` (debounce), `schema-version.ts`.
@@ -244,10 +245,11 @@ An Android companion (Capacitor) shows the same pages on a phone from an encrypt
 
 ### Adding a new AI provider
 
-1. Implement the `AIProvider` interface from `src/server/ai/types.ts`.
-2. Add it to `createAIProvider()` in `src/server/ai/factory.ts`.
-3. Add the option to `src/components/setup/ai-step.tsx` and `src/components/settings/ai-section.tsx`.
-4. Handle its settings keys in `src/app/api/setup/ai/route.ts`.
+1. Add its id to `AIProviderId` in `src/lib/types.ts`, and its model list to `src/lib/ai-models.ts` if it is a cloud API.
+2. Implement the `AIProvider` interface from `src/server/ai/types.ts`. Turn reasoning off in the request.
+3. Add it to `createAIProvider()` in `src/server/ai/factory.ts`, and its error messages to `friendlyAIError` in `src/server/sync/categorization.ts`.
+4. Add the option to `src/components/setup/ai-step.tsx` and `src/components/settings/ai-section.tsx`, with strings in both locale files.
+5. Handle its settings keys in `src/app/api/setup/ai/route.ts`. Store an API key as an encrypted triple whose keys end in `_encrypted`, `_iv` and `_auth_tag`, so the phone snapshot strips it.
 
 ## Running and testing
 
@@ -277,7 +279,7 @@ To reset local state, delete `data/spent.db*` and `data/.encryption-key`.
 - **Known issue: later installments can dedupe away.** An installment purchase repeats in every monthly card file with the same purchase date, merchant and original amount. The payment number ("N of M") only appears in a notes column, and no parser sets `installmentNumber` / `installmentTotal` yet, so payments 2 to M hash the same as payment 1 and are skipped as duplicates. Fixing it needs the real notes format per export, and care so statement rows still dedupe against already stored rows.
 - `identifier` is not reliably unique across institutions. Dedup uses a composite hash plus a per-hash count, so importing the same file twice is safe and genuine identical purchases on the same day are kept.
 - `israeli-bank-scrapers` runs Puppeteer with a hardcoded Asia/Jerusalem timezone. Most banks except OneZero do not support 2FA. Some (Yahav) only return 6 months of history.
-- `claude-haiku-4-5-20251001` is the default Claude model for categorization. Change it in `src/server/ai/providers/claude.ts`.
+- Default models: `claude-haiku-5-5` (Claude), `gpt-6-luna` (OpenAI) and `qwen3.5:9b` (Ollama). The cloud lists are in `src/lib/ai-models.ts`; only list a model whose provider code knows how to turn its reasoning off. A stored model that is no longer listed falls back to the default.
 
 ## Out of scope for now
 

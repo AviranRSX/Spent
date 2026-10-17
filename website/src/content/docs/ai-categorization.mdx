@@ -19,18 +19,23 @@ import NextStepCard from '../../components/docs/NextStepCard.astro';
 
 <TransactionListFragment />
 
-## Three options
+## Four options
 
 <div class="docs-providergrid">
   <ProviderCard variant="claude" name="Claude" tagline="Paid · Excellent" href="#claude">
-    <li><strong>Cost</strong> — about $0.01–$0.05 / month</li>
-    <li><strong>Privacy</strong> — merchant + amount only</li>
-    <li><strong>Quality</strong> — handles Hebrew well</li>
+    <li><strong>Model</strong>: Claude Haiku 5.5</li>
+    <li><strong>Cost</strong>: about $0.02 per 1,000 transactions</li>
+    <li><strong>Privacy</strong>: merchant + amount only</li>
+  </ProviderCard>
+  <ProviderCard variant="openai" name="OpenAI" tagline="Paid · Excellent" href="#openai">
+    <li><strong>Model</strong>: GPT-6 Luna</li>
+    <li><strong>Cost</strong>: about $0.02 per 1,000 transactions</li>
+    <li><strong>Privacy</strong>: merchant + amount only</li>
   </ProviderCard>
   <ProviderCard variant="ollama" name="Ollama" tagline="Free · Local" href="#ollama">
-    <li><strong>Cost</strong> — free</li>
-    <li><strong>Privacy</strong> — nothing leaves your computer</li>
-    <li><strong>Quality</strong> — very good with `llama3.1:8b`</li>
+    <li><strong>Model</strong>: `qwen3.5:9b`</li>
+    <li><strong>Cost</strong>: free</li>
+    <li><strong>Privacy</strong>: nothing leaves your computer</li>
   </ProviderCard>
   <ProviderCard variant="manual" name="Manual" tagline="Free · You" href="#manual">
     <li><strong>Cost</strong> — free</li>
@@ -43,7 +48,7 @@ You pick one during the setup wizard, and you can switch any time from *Settings
 
 ## Claude
 
-Cost-effective for personal use because of Claude Haiku 4.5's pricing and Spent's batching (50 transactions per call).
+Spent uses **Claude Haiku 5.5** by default, with reasoning turned off. Categorizing a batch is a short classification task, so reasoning would only add cost and wait time. Claude Haiku 4.5 is also available in the model picker.
 
 **Setup:**
 
@@ -55,24 +60,38 @@ Cost-effective for personal use because of Claude Haiku 4.5's pricing and Spent'
 Spent sends Anthropic's API the **merchant name and amount** of each new transaction — no personal IDs, no bank credentials. Anthropic's commercial API does not train on submitted data.
 </Callout>
 
+## OpenAI
+
+Spent uses **GPT-6 Luna** by default, with reasoning turned off (`reasoning.effort: "none"`) for the same reason as Claude. Requests are sent with `store: false`, so OpenAI does not keep the responses for later retrieval.
+
+**Setup:**
+
+1. Go to `platform.openai.com/api-keys` and create an API key.
+2. Paste it into Spent's setup wizard (or *Settings → AI*) and choose OpenAI.
+3. Done. Your key is encrypted at rest with AES-256-GCM, like the Claude key.
+
+<Callout variant="note">
+Spent sends OpenAI's API the **merchant name and amount** of each new transaction, and nothing else: no personal IDs, no bank credentials.
+</Callout>
+
 ## Ollama
 
-Runs a language model on your own machine. Slower than Claude, but every byte stays local.
+Runs a language model on your own machine. Slower than the cloud providers, but every byte stays local.
 
 **Setup:**
 
 1. Install Ollama from **[ollama.com/download](https://ollama.com/download)**.
 2. In a terminal:
    ```sh
-   ollama pull llama3.1:8b
+   ollama pull qwen3.5:9b
    ```
-   (4.7 GB download. `qwen2.5:3b` is a smaller alternative.)
+   (6.6 GB download.) Or skip this step: Spent's setup wizard can download the model for you.
 3. In Spent's setup wizard, choose Ollama and pick the model.
 
 Spent talks to Ollama at `http://localhost:11434`, its default.
 
 <Callout variant="gotcha">
-Ollama needs about **6-12 GB of RAM** while running. Smaller models can struggle with Hebrew merchant names — `llama3.1:8b` and `qwen2.5:3b` are the most reliable.
+`qwen3.5:9b` needs about **8 GB of free RAM or VRAM** while running. In our tests on synthetic transactions it was clearly more accurate than the Llama models, Hebrew merchant names included. On a machine with less memory, pick `llama3.2:3b` and expect more corrections.
 </Callout>
 
 ## Manual
@@ -87,11 +106,11 @@ When Spent syncs, it groups uncategorized transactions into batches of **50** an
 
 <ForDevelopers summary="What the prompt and retry logic look like">
 
-The prompt (defined in `src/server/ai/prompts.ts`) is shared between Claude and Ollama. It asks the model to return JSON: an array of objects with `merchant`, `category`, and a confidence score.
+The prompt (defined in `src/server/ai/prompts.ts`) is shared between Claude, OpenAI and Ollama. It asks the model to return JSON: an array of objects with `merchant`, `category`, and a confidence score.
 
 Spent retries up to **three times** on malformed output. Persistent failures fall back to *Uncategorized* — never to a wrong category.
 
-Default Claude model: `claude-haiku-4-5-20251001`. To upgrade, edit `src/server/ai/providers/claude.ts`.
+Default models: `claude-haiku-5-5` for Claude, `gpt-6-luna` for OpenAI and `qwen3.5:9b` for Ollama. The cloud model lists live in `src/lib/ai-models.ts` and the Ollama list in `src/lib/ollama-model-options.ts`.
 
 </ForDevelopers>
 
@@ -100,7 +119,7 @@ Default Claude model: `claude-haiku-4-5-20251001`. To upgrade, edit `src/server/
 Switch any time from *Settings → AI*. Previously-categorized transactions stay categorized; only new transactions (and ones you've explicitly re-categorized) go through the new provider.
 
 <Callout variant="gotcha">
-**If you switch away from Claude, revoke your API key** in the Anthropic console. Spent will discard it locally, but rotating it is the safe move.
+**If you switch away from Claude or OpenAI, revoke your API key** in the Anthropic console or on the OpenAI platform. Spent will discard it locally, but rotating it is the safe move.
 </Callout>
 
 <NextStepCard href="/Spent/sync-and-dashboard" title="Sync & dashboard" />
